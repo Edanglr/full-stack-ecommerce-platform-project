@@ -1,0 +1,208 @@
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin: 0; 
+  padding: 0;
+  box-sizing: border-box; 
+}
+
+
+.navbar {
+  z-index: 100; 
+  background-color: #000 !important;
+  position: relative;
+  transition: background-color 0.3s ease;
+}
+
+
+.nav-dropdown-hover:hover .dropdown-menu {
+  display: block;
+  margin-top: 0; 
+  border-radius: 0; 
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #1a1a1a;
+
+}
+
+.nav-dropdown-hover .dropdown-menu .dropdown-item {
+  color: #fff;
+}
+
+.nav-dropdown-hover .dropdown-menu .dropdown-item:hover {
+  background-color: #333; 
+  color: white;
+}
+
+
+.navbar .nav-link, .navbar .navbar-brand {
+    color: white !important; 
+    font-weight: 500;
+}
+.brand-name {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: white; /* navbar dark olduğu için */
+  font-family: "Poppins", sans-serif;
+}
+
+.navbar .nav-link:hover, .navbar .navbar-brand:hover {
+    color: rgba(255, 255, 255, 0.7) !important; 
+}
+
+.hero-video-container {
+  width: 100%;
+  height: 50vh; /* ⭐ Video boyutu artık buradan kontrol ediliyor */
+  overflow: hidden;
+  position: relative;
+}
+
+.hero-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* ⭐ Videonun kırpılarak sığmasını sağlar */
+}
+
+
+h2.text-center {
+  font-size: 2.2rem;
+  font-weight: 600;
+  margin-bottom: 2.5rem;
+  color: #333;
+}
+
+
+.product-card {
+  border: none !important; 
+  text-align: center;
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; 
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  background-color: #fff;
+}
+
+.product-card:hover {
+  transform: translateY(-5px); 
+  box-shadow: 0 8px 12px rgba(0,0,0,0.1); 
+}
+
+.card-img-top {
+  border-radius: 0;
+}
+
+.card-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  color: #333;
+}
+
+.card-text {
+  font-size: 1rem;
+  color: #555;
+  margin-bottom: 1rem;
+}
+
+.btn-outline-dark {
+  border-radius: 0; 
+  font-weight: 500;
+  padding: 0.6rem 1.8rem;
+  border-color: #333;
+  color: #333;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-outline-dark:hover {
+  background-color: #333;
+  color: white;
+}
+
+.auth-page-container {
+  min-height: calc(100vh - 56px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1a1a1a; 
+  color: white;
+  padding: 2rem 0; 
+}
+
+.auth-form-card {
+  background-color: #000; 
+  border: 1px solid #333; 
+  border-radius: 5px;
+  padding: 2rem;
+  max-width: 450px; 
+  width: 100%;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); 
+}
+
+.auth-form-card h2 {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: white;
+  font-weight: 300;
+}
+
+.auth-form-card .form-label {
+  color: #bbb; 
+  font-weight: 500;
+}
+
+.auth-form-card .form-control {
+  background-color: #333; 
+  border: 1px solid #555; 
+  color: white;
+  border-radius: 0; 
+  padding: 0.75rem 1rem;
+}
+
+.auth-form-card .form-control:focus {
+  background-color: #444;
+  border-color: #777;
+  box-shadow: none; 
+}
+
+.auth-form-card .btn-dark-custom {
+  background-color: #555; 
+  border-color: #555; 
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0;
+  width: 100%; 
+  margin-top: 1.5rem;
+}
+
+.auth-form-card .btn-dark-custom:hover {
+  background-color: #777;
+  border-color: #777;
+  color: white;
+}
+
+.auth-form-card .text-muted {
+  color: #aaa !important; /* Yardımcı metin rengi */
+  text-align: center;
+  margin-top: 1.5rem;
+  display: block; /* Bağlantıyı ortalamak için */
+}
+
+.auth-form-card .text-muted a {
+  color: #007bff; /* Link rengi */
+  text-decoration: none;
+}
+
+.auth-form-card .text-muted a:hover {
+  text-decoration: underline;
+}
+
+.auth-form-card .logo-container {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+.auth-form-card .logo-container img {
+    width: 60px; 
+    height: 60px;
+}
+.category-page-container {
+    min-height: calc(100vh - 56px - 100px); 
+}

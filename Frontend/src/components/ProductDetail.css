@@ -1,0 +1,341 @@
+/* ------------------------------
+   GENERAL LAYOUT
+-------------------------------- */
+
+.pd-container {
+  max-width: 1200px;
+  margin: 150px auto 40px auto;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 40px;
+  padding: 0 20px;
+}
+
+/* ------------------------------
+   LEFT SIDE (IMAGE)
+-------------------------------- */
+
+.pd-left {
+  width: 100%;
+}
+
+.pd-image {
+  width: 100%;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+/* ------------------------------
+   RIGHT SIDE (DETAILS)
+-------------------------------- */
+
+.pd-right {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pd-title {
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.pd-price {
+  font-size: 22px;
+  font-weight: 600;
+  margin-top: 5px;
+}
+
+/* Stock info */
+.pd-stock {
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.pd-stock-available {
+  color: green;
+}
+
+.pd-stock-limited {
+  color: #d97706;
+}
+
+.pd-stock-coming {
+  color: #b91c1c;
+}
+
+.pd-label {
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.pd-select {
+  padding: 10px;
+  width: 180px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+.pd-quantity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.pd-quantity button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #eee;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.pd-add {
+  background: black;
+  color: white;
+  padding: 14px;
+  width: 160px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  margin-top: 15px;
+}
+
+.pd-add:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pd-info-title {
+  margin-top: 25px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.pd-info {
+  max-width: 400px;
+  line-height: 1.6;
+  color: #555;
+}
+
+/* ------------------------------
+   RATING SECTION
+-------------------------------- */
+
+.pd-rating-block {
+  margin-bottom: 1rem;
+}
+
+.pd-rating-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pd-rating-text {
+  font-size: 0.9rem;
+}
+
+.pd-star {
+  font-size: 1.2rem;
+}
+
+.pd-star.filled {
+  color: gold;
+}
+
+.pd-star.clickable {
+  cursor: pointer;
+}
+
+.pd-rating-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.pd-rating-button {
+  border: none;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  background-color: #000;
+  color: white;
+}
+
+.pd-rating-message {
+  font-size: 0.8rem;
+  margin-top: 0.3rem;
+}
+
+.pd-rating-note {
+  font-size: 0.75rem;
+  margin-top: 4px;
+  color: #777;
+}
+
+/* ------------------------------
+   FEATURES / INFO CARDS
+-------------------------------- */
+
+.features-container {
+  max-width: 1200px;
+  margin: 60px auto 80px auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 25px;
+  padding: 0 20px;
+}
+
+.info-card {
+  background: #f7f7f7;
+  padding: 35px 25px;
+  border-radius: 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: 0.2s ease;
+}
+
+.info-card:hover {
+  background: #f1f1f1;
+  transform: translateY(-3px);
+}
+
+.info-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 15px auto;
+  opacity: 0.9;
+}
+
+.info-card h4 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.info-card p {
+  font-size: 14px;
+  color: #555;
+  line-height: 1.4;
+}
+
+/* ------------------------------
+   CUSTOMER REVIEWS
+-------------------------------- */
+
+.product-page-wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.comment-section {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto 100px auto;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.comment-section h2 {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.add-comment-box {
+  background: #fafafa;
+  border-radius: 12px;
+  padding: 18px 20px;
+  border: 1px solid #eee;
+  margin-bottom: 20px;
+}
+
+.add-comment-box h3 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.comment-textarea {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  font-family: inherit;
+}
+
+.comment-card {
+  background: #fafafa;
+  padding: 18px 20px;
+  border-radius: 12px;
+  margin-bottom: 15px;
+  border: 1px solid #eee;
+}
+
+.comment-stars {
+  margin: 6px 0;
+}
+
+.comment-date {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #777;
+}
+
+/* ------------------------------
+   RESPONSIVE DESIGN
+-------------------------------- */
+
+@media (max-width: 900px) {
+  .pd-container {
+    grid-template-columns: 1fr;
+  }
+
+  .features-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .features-container {
+    grid-template-columns: 1fr;
+  }
+
+  .info-card {
+    padding: 25px 20px;
+  }
+
+  .comment-section {
+    padding: 10px;
+  }
+}
+
+.pd-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.favorite-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.2s ease;
+}
+
+.favorite-btn:hover {
+  transform: scale(1.15);
+}
+

@@ -1,0 +1,88 @@
+.profile-page {
+  display: flex;
+  max-width: 1200px;
+  margin: 160px auto 50px auto;
+  gap: 60px;
+  padding: 0 20px;
+}
+
+/* SOL MENÜ */
+.profile-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  gap: 12px;
+}
+
+.profile-sidebar button {
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 15px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.profile-sidebar button.active {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+.logout-btn {
+  margin-top: 40px;
+  color: red;
+}
+
+/* SAĞ TARAFTAKİ BİLGİLER */
+.profile-content {
+  flex: 1;
+}
+
+.profile-name {
+  font-size: 26px;
+  font-weight: bold;
+  margin-bottom: 30px;
+}
+
+.profile-section {
+  margin-bottom: 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-section label {
+  font-size: 13px;
+  font-weight: bold;
+  color: #444;
+  margin-bottom: 4px;
+}
+
+.profile-section p {
+  font-size: 15px;
+  color: #222;
+}
+
+.profile-section input {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.profile-row {
+  display: flex;
+  gap: 20px;
+}
+
+.save-btn {
+  margin-top: 20px;
+  padding: 12px 20px;
+  background: black;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.save-btn:hover {
+  background: #333;
+}
