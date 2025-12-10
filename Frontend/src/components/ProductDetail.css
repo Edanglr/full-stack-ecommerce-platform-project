@@ -319,23 +319,3 @@
     padding: 10px;
   }
 }
-
-.pd-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.favorite-btn {
-  background: none;
-  border: none;
-  font-size: 28px;
-  cursor: pointer;
-  padding: 0;
-  transition: transform 0.2s ease;
-}
-
-.favorite-btn:hover {
-  transform: scale(1.15);
-}
-

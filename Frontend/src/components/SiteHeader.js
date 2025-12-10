@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+// src/components/SiteHeader.js
+import React, { useState } from "react";
 import { Navbar, Nav, NavDropdown, Container } from "react-bootstrap";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
@@ -7,10 +8,7 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
   const navigate = useNavigate();
   const { cartCount } = useCart();
 
-  // Profil menüsünü kontrol eden state
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const closeTimeout = useRef(null);
-
 
   const categories = ["Sweatshirt", "T-shirt", "Short", "Jeans", "Knitwear"];
 
@@ -42,7 +40,6 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
       className="py-3"
     >
       <Container>
-        {/* LOGO */}
         <Navbar.Brand as={Link} to="/" className="d-flex align-items-center">
           <img
             src="/logo.png"
@@ -58,8 +55,7 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
 
         <Navbar.Collapse id="main-navbar">
           <Nav className="ms-auto align-items-center">
-
-            {/* SEARCH BAR */}
+            {/* Search bar */}
             <input
               type="text"
               placeholder="Search products..."
@@ -74,7 +70,7 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
               }}
             />
 
-            {/* CATEGORIES DROPDOWN */}
+            {/* Categories */}
             <NavDropdown title="Categories" id="categories-dropdown">
               {categories.map((category) => (
                 <NavDropdown.Item
@@ -87,29 +83,14 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
               ))}
             </NavDropdown>
 
-            {/* Manager: Product & Order Panels */}
-            {user && user.role === "manager" && (
-               <>
-                  <Nav.Link as={Link} to="/admin/products" className="ms-3">
-                    Manage Products
-                  </Nav.Link>
-        
-                  <Nav.Link as={Link} to="/admin/orders" className="ms-3">
-                    Manage Orders
-                  </Nav.Link>
-                </>
-            )}
-            
-
-            {/* MANAGER: COMMENT PANEL */}
-
+            {/* Manager: Comment Panel */}
             {user && user.role === "manager" && (
               <Nav.Link as={Link} to="/admin/comments" className="ms-3">
                 Comment Panel
               </Nav.Link>
             )}
 
-            {/* TRACK ORDER */}
+            {/* Track Order */}
             <Nav.Link
               as={Link}
               to="/track"
@@ -119,7 +100,7 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
               Track Order
             </Nav.Link>
 
-            {/* CART ICON */}
+            {/* Cart icon + count */}
             <Nav.Link as={Link} to="/cart" className="position-relative ms-3">
               <img
                 src="/icons/cart-black.png"
@@ -146,26 +127,15 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
               )}
             </Nav.Link>
 
-            {/* USER AVATAR + HOVER MENU */}
+            {/* USER AVATAR + DROPDOWN */}
             {user ? (
               <div
                 className="nav-profile-wrapper ms-3"
                 style={{ position: "relative" }}
-                onMouseEnter={() => {
-                  clearTimeout(closeTimeout.current);
-                  setShowProfileMenu(true);
-                }}
-
-                onMouseLeave={() => {
-                  closeTimeout.current = setTimeout(() => {
-                    setShowProfileMenu(false);
-                  }, 200); // 200 ms gecikme
-                }}
-
               >
-                {/* Avatar button */}
                 <button
                   className="nav-profile-button"
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
                   style={{
                     width: "38px",
                     height: "38px",
@@ -175,13 +145,11 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                     border: "none",
                     fontWeight: "bold",
                     fontSize: "16px",
-                    cursor: "pointer",
                   }}
                 >
                   {getInitial(user.name || user.fullName || user.email)}
                 </button>
 
-                {/* Dropdown menu */}
                 {showProfileMenu && (
                   <div
                     className="nav-profile-dropdown"
@@ -203,51 +171,54 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                       onClick={() => navigate("/profile")}
                       style={{
                         padding: "10px 15px",
+                        textAlign: "left",
                         background: "none",
                         border: "none",
-                        textAlign: "left",
                         cursor: "pointer",
                       }}
                     >
-                      Profile
+                      Profilim
                     </button>
 
                     <button
                       onClick={() => navigate("/orders")}
                       style={{
                         padding: "10px 15px",
+                        textAlign: "left",
                         background: "none",
                         border: "none",
-                        textAlign: "left",
                         cursor: "pointer",
                       }}
                     >
-                      My Orders
+                      Siparişlerim
                     </button>
 
                     <button
                       onClick={handleLogoutClick}
                       style={{
                         padding: "10px 15px",
+                        textAlign: "left",
                         background: "none",
                         border: "none",
-                        textAlign: "left",
                         cursor: "pointer",
                         color: "red",
                       }}
                     >
-                      Log Out
+                      Çıkış Yap
                     </button>
                   </div>
                 )}
               </div>
             ) : (
               <>
-                <Nav.Link as={Link} to="/login">Log In</Nav.Link>
-                <Nav.Link as={Link} to="/signup">Sign Up</Nav.Link>
+                <Nav.Link as={Link} to="/login">
+                  Log In
+                </Nav.Link>
+                <Nav.Link as={Link} to="/signup">
+                  Sign Up
+                </Nav.Link>
               </>
             )}
-
           </Nav>
         </Navbar.Collapse>
       </Container>
