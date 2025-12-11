@@ -66,7 +66,8 @@ function AdminOrdersPage() {
   }
 
   return (
-    <div style={{ padding: 20, marginTop: 120 }}>
+    // 🔽 Burada da marginTop 120 → 80
+    <div style={{ padding: 20, marginTop: 80 }}>
       <h2>Delivery List (Product Manager)</h2>
       <p>
         Below is the delivery list with delivery ID, customer, product,
