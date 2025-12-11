@@ -1,11 +1,13 @@
-// src/App.js
+// APP.JS — BÜTÜN IMPORTLAR EN ÜSTE
+
 import React, { useState, useEffect } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./App.css";
+
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { CartProvider } from "./context/CartContext";
 
-// Arkadaşının ekledikleri
+// component imports
 import PaymentMethodsPage from "./components/PaymentMethodsPage";
 import ReturnsPage from "./components/ReturnsPage";
 import SettingsPage from "./components/SettingsPage";
@@ -24,14 +26,18 @@ import ProductDetail from "./components/ProductDetail";
 import AdminCommentsPage from "./components/AdminCommentsPage";
 import OrderHistoryPage from "./components/OrderHistoryPage";
 
-// ✅ Admin sayfaları
 import AdminProductManagerPage from "./components/AdminProductManagerPage";
 import AdminOrdersPage from "./components/AdminOrdersPage";
 
-// Senin eklediğin InvoicePage
 import InvoicePage from "./components/InvoicePage";
+import PaymentPage from "./components/PaymentPage";
 
-// Ana sayfa bileşeni: video + ürün grid
+// buraya kadar sadece IMPORTLAR GELİR
+console.log("APP ROUTES LOADED!");
+
+
+// ================= HomePage ==================
+
 function HomePage({ searchTerm }) {
   return (
     <>
@@ -41,11 +47,13 @@ function HomePage({ searchTerm }) {
   );
 }
 
+
+// ==================== APP ====================
+
 function App() {
   const [user, setUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Sayfa ilk açıldığında localStorage'dan kullanıcıyı oku
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
@@ -57,13 +65,9 @@ function App() {
     }
   }, []);
 
-  // Login sonrası
   const handleLogin = (userData, token) => {
     setUser(userData);
-
-    if (token) {
-      localStorage.setItem("token", token);
-    }
+    if (token) localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
   };
 
@@ -85,7 +89,6 @@ function App() {
           />
 
           <Routes>
-            {/* Ana akış */}
             <Route path="/" element={<HomePage searchTerm={searchTerm} />} />
             <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
             <Route path="/signup" element={<SignupPage />} />
@@ -94,26 +97,20 @@ function App() {
             <Route path="/cart" element={<CartPage />} />
             <Route path="/product/:id" element={<ProductDetail />} />
 
-            {/* Profil & kullanıcıyla ilgili sayfalar */}
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/payment-methods" element={<PaymentMethodsPage />} />
             <Route path="/returns" element={<ReturnsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/favorites" element={<FavoritesPage />} />
 
-            {/* Siparişler & admin */}
             <Route path="/orders" element={<OrderHistoryPage />} />
             <Route path="/admin/comments" element={<AdminCommentsPage />} />
 
-            {/* ✅ Yeni admin panel route'ları */}
-            <Route
-              path="/admin/products"
-              element={<AdminProductManagerPage />}
-            />
+            <Route path="/admin/products" element={<AdminProductManagerPage />} />
             <Route path="/admin/orders" element={<AdminOrdersPage />} />
 
-            {/* Invoice sayfası */}
             <Route path="/invoice/:orderId" element={<InvoicePage />} />
+            <Route path="/payment" element={<PaymentPage />} />
           </Routes>
         </div>
       </Router>

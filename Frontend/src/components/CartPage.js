@@ -24,7 +24,7 @@ function CartPage() {
     updateCart(updated);
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = () => {
     const token = localStorage.getItem("token");
 
     if (!token) {
@@ -33,49 +33,9 @@ function CartPage() {
       return;
     }
 
-    try {
-      const orderItems = cartItems.map((item) => ({
-        productId: item.productId,
-        name: item.name,
-        price: item.price,
-        size: item.size,
-        quantity: item.quantity,
-        imageUrl: item.image,
-      }));
-
-      const res = await fetch("http://localhost:5050/api/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ items: orderItems }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.message || "Order failed");
-        return;
-      }
-
-      alert(
-        `Order created successfully!\nYour tracking code: ${data.trackingCode}`
-      );
-
-      // Sepeti temizle
-      setCart([]);
-      setCartItems([]);
-
-      // Invoice sayfasına yönlendir
-      navigate(`/invoice/${data.orderId}`, {
-        state: { invoice: data.invoice },
-      });
-    } catch (err) {
-      console.error("CHECKOUT ERROR:", err);
-      alert("Error while creating order.");
-    }
+    navigate("/payment");
   };
+
 
   const subtotal = cartItems
     .reduce((acc, item) => acc + item.price * item.quantity, 0)
@@ -162,7 +122,7 @@ function CartPage() {
                 </div>
 
                 <Button
-                  variant="dark"
+                 variant="success"
                   className="w-100 mt-3"
                   onClick={handleCheckout}
                 >
