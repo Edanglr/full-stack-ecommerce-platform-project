@@ -6,90 +6,103 @@ function OrderHistoryPage() {
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [creatingReturn, setCreatingReturn] = useState(false);
 
-  // 🔹 Siparişleri çek
-  useEffect(() => {
-    const token = localStorage.getItem("token");
+  // Siparişleri backend'den çek
+  const fetchOrders = async () => {
+    try {
+      const token = localStorage.getItem("token");
 
-    if (!token) {
-      setError("You must be logged in to view your orders.");
-      setLoading(false);
-      return;
-    }
-
-    const fetchOrders = async () => {
-      try {
-        const res = await fetch("http://localhost:5050/api/orders/my", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          setError(data.message || "Failed to load your orders.");
-          setLoading(false);
-          return;
-        }
-
-        const data = await res.json();
-        setOrders(data || []);
-      } catch (err) {
-        console.error("ORDER HISTORY ERROR:", err);
-        setError("Unexpected error while loading orders.");
-      } finally {
+      if (!token) {
+        setError("You must be logged in to view your orders.");
         setLoading(false);
+        return;
       }
-    };
 
+      const res = await fetch("http://localhost:5050/api/orders/my", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.message || "Failed to load your orders.");
+        setLoading(false);
+        return;
+      }
+
+      const data = await res.json();
+      setOrders(data || []);
+    } catch (err) {
+      console.error("ORDER HISTORY ERROR:", err);
+      setError("Unexpected error while loading orders.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchOrders();
   }, []);
 
-  // 🔹 Return butonuna basıldığında backend’e istek at
-  const handleReturnRequest = async (order, item) => {
+  // 🔹 Return isteği oluşturan fonksiyon
+  const handleCreateReturn = async (order, item) => {
+    if (creatingReturn) return;
+
+    const confirm = window.confirm(
+      `Do you want to request a return for "${item.name}"?`
+    );
+    if (!confirm) return;
+
     try {
+      setCreatingReturn(true);
       const token = localStorage.getItem("token");
       if (!token) {
         alert("You must be logged in to request a return.");
         return;
       }
 
-      // productId hem id hem populate edilmiş obje olabilir, ikisini de destekle
       const productId =
-        (item.productId && (item.productId._id || item.productId)) || null;
+        item.productId?._id ||
+        item.productId || // order.items içinde direkt id olabilir
+        item.product?._id ||
+        null;
 
       if (!productId) {
         alert("Product information is missing, cannot create return.");
         return;
       }
 
-      const res = await fetch(
-        "http://localhost:5050/api/returns/request",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            orderId: order._id,
-            productId,
-            size: item.size,
-            quantity: item.quantity,
-            reason: "Requested by customer",
-          }),
-        }
-      );
+      const res = await fetch("http://localhost:5050/api/returns/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          orderId: order._id,
+          productId,
+          size: item.size,
+          quantity: item.quantity,
+          reason: "Requested by customer",
+        }),
+      });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.message || "Failed to create return.");
+        alert(data.message || "Error creating return.");
         return;
       }
 
-      alert("Return created successfully!");
+      alert("Return request created successfully.");
+
+      // Shipping history & status güncellensin diye siparişleri yeniden çek
+      fetchOrders();
     } catch (err) {
       console.error("CREATE RETURN ERROR:", err);
       alert("Unexpected error while creating return.");
+    } finally {
+      setCreatingReturn(false);
     }
   };
 
@@ -176,7 +189,7 @@ function OrderHistoryPage() {
                     border: "1px solid #e5e5e5",
                     borderRadius: "6px",
                     backgroundColor: "#fafafa",
-                    position: "relative", // Return butonu için
+                    position: "relative",
                   }}
                 >
                   {/* Product Image */}
@@ -231,7 +244,7 @@ function OrderHistoryPage() {
 
                   {/* Return Button – sağ alt köşe */}
                   <button
-                    onClick={() => handleReturnRequest(order, item)}
+                    onClick={() => handleCreateReturn(order, item)}
                     style={{
                       position: "absolute",
                       right: "10px",
@@ -244,8 +257,9 @@ function OrderHistoryPage() {
                       borderRadius: "4px",
                       cursor: "pointer",
                     }}
+                    disabled={creatingReturn}
                   >
-                    Return
+                    {creatingReturn ? "Sending..." : "Return"}
                   </button>
                 </div>
               ))}
