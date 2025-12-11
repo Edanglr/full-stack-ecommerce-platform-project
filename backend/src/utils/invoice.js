@@ -46,108 +46,98 @@ export async function generateInvoicePdf({ order, user }) {
   const writeStream = fs.createWriteStream(pdfPath);
   doc.pipe(writeStream);
 
-  // ---------- HEADER ----------
-  const brandName = "La Strada"; // istersen burayı değişebilirsin
+  // ===================== HEADER =====================
+  const brandName = "La Strada";
   const shopSubtitle = "Campus Shop";
 
+  // La Strada ortada (sample_invoice gibi)
   doc
     .font("Helvetica-Bold")
-    .fontSize(22)
+    .fontSize(20)
     .fillColor("#111111")
-    .text(brandName, 50, 40);
+    .text(brandName, { align: "center" });
 
+  // Campus Shop bir alt satırda, solda küçük
   doc
+    .moveDown(0.5)
     .font("Helvetica")
     .fontSize(10)
     .fillColor("#555555")
-    .text(shopSubtitle, 50, 70);
+    .text(shopSubtitle, 50);
 
-  // Sağ tarafa invoice bilgileri
+  doc.moveDown(1);
+
+  // Invoice info (sample_invoice’teki gibi solda blok halinde)
   doc
     .font("Helvetica")
     .fontSize(10)
     .fillColor("#111111")
-    .text(`Invoice Number: ${invoiceNumber}`, 320, 40, { align: "right" })
-    .text(`Invoice Date: ${year}-${month}-${day}`, 320, 55, { align: "right" })
-    .text(`Order ID: ${orderIdStr}`, 320, 70, { align: "right" });
+    .text(`Invoice Number: ${invoiceNumber}`)
+    .text(`Invoice Date: ${year}-${month}-${day}`)
+    .text(`Order ID: ${orderIdStr}`)
+    .moveDown();
 
-  // Alt çizgi
-  doc
-    .moveTo(50, 95)
-    .lineTo(550, 95)
-    .lineWidth(1)
-    .strokeColor("#dddddd")
-    .stroke();
-
-  // ---------- BILL TO BLOĞU ----------
+  // ===================== BILL TO =====================
   const name =
     user.name || `${user.firstName || ""} ${user.lastName || ""}`.trim();
   const address = user.address || user.shippingAddress || "";
   const city = user.city || "";
   const postalCode = user.postalCode || user.zip || "";
 
-  let y = 115;
-
-  // Başlık için arka plan
   doc
-    .rect(50, y, 500, 20)
-    .fill("#f5f5f5");
-
-  doc
-    .fillColor("#111111")
     .font("Helvetica-Bold")
     .fontSize(12)
-    .text("Bill To", 60, y + 5);
-
-  y += 30;
+    .fillColor("#111111")
+    .text("Bill To");
 
   doc
+    .moveDown(0.3)
     .font("Helvetica")
     .fontSize(11)
     .fillColor("#333333")
-    .text(name || "Customer", 60, y);
+    .text(name || "Customer");
 
-  if (address) {
-    doc.text(address, 60, doc.y);
-  }
-  if (city) {
-    doc.text(city, 60, doc.y);
-  }
-  if (postalCode) {
-    doc.text(postalCode, 60, doc.y);
-  }
+  if (address) doc.text(address);
+  if (city) doc.text(city);
+  if (postalCode) doc.text(postalCode);
 
-  // ---------- ITEM TABLOSU ----------
-  y = doc.y + 25;
+  doc.moveDown(1.5);
 
-  // Tablo başlığı arka planı
+  // ===================== ITEM TABLOSU =====================
+  // Üst çizgi
+  let tableTopY = doc.y;
   doc
-    .rect(50, y, 500, 22)
-    .fill("#f5f5f5");
+    .moveTo(50, tableTopY)
+    .lineTo(550, tableTopY)
+    .lineWidth(0.8)
+    .strokeColor("#000000")
+    .stroke();
 
-  const tableHeaderY = y + 6;
+  // Başlık satırı
+  const headerY = tableTopY + 8;
 
   doc
     .font("Helvetica-Bold")
     .fontSize(11)
     .fillColor("#111111")
-    .text("Item", 55, tableHeaderY, { width: 200 })
-    .text("Size", 260, tableHeaderY, { width: 60 })
-    .text("Qty", 320, tableHeaderY, { width: 50, align: "right" })
-    .text("Price", 380, tableHeaderY, { width: 80, align: "right" })
-    .text("Total", 470, tableHeaderY, { width: 80, align: "right" });
+    .text("Item", 55, headerY, { width: 220 })
+    .text("Size", 280, headerY, { width: 50 })
+    .text("Qty", 340, headerY, { width: 40, align: "right" })
+    .text("Price", 390, headerY, { width: 70, align: "right" })
+    .text("Total", 470, headerY, { width: 70, align: "right" });
 
-  // Alt çizgi
-  y += 22;
+  // Başlık alt çizgisi
+  const headerBottomY = headerY + 16;
   doc
-    .moveTo(50, y)
-    .lineTo(550, y)
+    .moveTo(50, headerBottomY)
+    .lineTo(550, headerBottomY)
     .lineWidth(0.5)
-    .strokeColor("#cccccc")
+    .strokeColor("#000000")
     .stroke();
 
+  // Satırlar
   const items = Array.isArray(order.items) ? order.items : [];
-  let rowY = y + 5;
+  let rowY = headerBottomY + 6;
 
   doc.font("Helvetica").fontSize(10).fillColor("#333333");
 
@@ -158,84 +148,102 @@ export async function generateInvoicePdf({ order, user }) {
     const price = item.price || 0;
     const lineTotal = qty * price;
 
-    // Satır
     doc
-      .text(nameText, 55, rowY, { width: 200 })
-      .text(sizeText, 260, rowY, { width: 60 })
-      .text(String(qty), 320, rowY, { width: 50, align: "right" })
-      .text(price.toFixed(2), 380, rowY, { width: 80, align: "right" })
-      .text(lineTotal.toFixed(2), 470, rowY, { width: 80, align: "right" });
+      .text(nameText, 55, rowY, { width: 220 })
+      .text(sizeText, 280, rowY, { width: 50 })
+      .text(String(qty), 340, rowY, { width: 40, align: "right" })
+      .text(price.toFixed(2), 390, rowY, { width: 70, align: "right" })
+      .text(lineTotal.toFixed(2), 470, rowY, { width: 70, align: "right" });
 
-    rowY += 18;
+    rowY += 16;
 
-    // Sayfa sonu kontrolü
+    // Eğer çok ürün olursa sayfa taşmasın
     if (rowY > 720) {
+      // satır alt çizgisi
+      doc
+        .moveTo(50, rowY)
+        .lineTo(550, rowY)
+        .lineWidth(0.5)
+        .strokeColor("#000000")
+        .stroke();
+
       doc.addPage();
-      rowY = 50;
+      tableTopY = doc.y;
+      doc
+        .moveTo(50, tableTopY)
+        .lineTo(550, tableTopY)
+        .lineWidth(0.8)
+        .strokeColor("#000000")
+        .stroke();
+
+      const newHeaderY = tableTopY + 8;
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(11)
+        .fillColor("#111111")
+        .text("Item", 55, newHeaderY, { width: 220 })
+        .text("Size", 280, newHeaderY, { width: 50 })
+        .text("Qty", 340, newHeaderY, { width: 40, align: "right" })
+        .text("Price", 390, newHeaderY, { width: 70, align: "right" })
+        .text("Total", 470, newHeaderY, { width: 70, align: "right" });
+
+      const newHeaderBottomY = newHeaderY + 16;
+      doc
+        .moveTo(50, newHeaderBottomY)
+        .lineTo(550, newHeaderBottomY)
+        .lineWidth(0.5)
+        .strokeColor("#000000")
+        .stroke();
+
+      rowY = newHeaderBottomY + 6;
+      doc.font("Helvetica").fontSize(10).fillColor("#333333");
     }
   }
 
   // Tablo alt çizgisi
   doc
-    .moveTo(50, rowY + 2)
-    .lineTo(550, rowY + 2)
-    .lineWidth(0.5)
-    .strokeColor("#cccccc")
+    .moveTo(50, rowY + 4)
+    .lineTo(550, rowY + 4)
+    .lineWidth(0.8)
+    .strokeColor("#000000")
     .stroke();
 
-  // ---------- TOPLAM BLOĞU ----------
+  // ===================== ORDER SUMMARY =====================
   const totalAmount =
     typeof order.totalAmount === "number" ? order.totalAmount : 0;
 
-  const summaryTop = rowY + 20;
-
-  // Sağda küçük bir özet kutusu
-  const boxWidth = 200;
-  const boxX = 350;
-
-  doc
-    .rect(boxX, summaryTop, boxWidth, 50)
-    .lineWidth(0.5)
-    .strokeColor("#cccccc")
-    .stroke();
+  doc.moveDown(2);
 
   doc
     .font("Helvetica-Bold")
-    .fontSize(11)
+    .fontSize(12)
     .fillColor("#111111")
-    .text("Order Summary", boxX + 10, summaryTop + 6);
+    .text("Order Summary");
 
   doc
+    .moveDown(0.5)
     .font("Helvetica")
-    .fontSize(10)
+    .fontSize(11)
     .fillColor("#333333")
-    .text(
-      `Total Amount: ${totalAmount.toFixed(2)}`,
-      boxX + 10,
-      summaryTop + 24
-    );
+    .text(`Total Amount: ${totalAmount.toFixed(2)}`);
 
-  // ---------- FOOTER ----------
-  const footerY = 760;
+  doc.moveDown(2);
+
+  // ===================== FOOTER =====================
+  doc
+    .font("Helvetica-Oblique")
+    .fontSize(10)
+    .fillColor("#555555")
+    .text("Thank you for your purchase from La Strada.");
 
   doc
+    .moveDown(0.3)
     .font("Helvetica")
     .fontSize(9)
-    .fillColor("#999999")
+    .fillColor("#777777")
     .text(
-      "Thank you for your purchase from La Strada.",
-      50,
-      footerY,
-      { align: "center", width: 500 }
-    );
-
-  doc
-    .fontSize(8)
-    .text(
-      "This invoice was generated electronically and is valid without a signature.",
-      50,
-      footerY + 12,
-      { align: "center", width: 500 }
+      "This invoice was generated electronically and is valid without a signature."
     );
 
   // PDF'i bitir
