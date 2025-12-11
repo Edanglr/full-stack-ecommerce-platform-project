@@ -5,14 +5,26 @@ import Order from "../models/Order.js";
 import User from "../models/User.js";
 
 import { generateTrackingCode } from "../utils/trackingCode.js";
+import { requireAuth, requireManager } from "../middleware/auth.js";
+import { mockBankCharge } from "../utils/mockBank.js";
 import { generateInvoicePdf } from "../utils/invoice.js";
 import { sendInvoiceEmail } from "../utils/email.js";
-import { requireAuth, requireManager } from "../middleware/auth.js";
 
 const router = express.Router();
 
 /**
- * CREATE ORDER (POST /api/orders)
+ * POST /api/orders
+ * -> Sadece login kullanıcı
+ *
+ * Özellikler:
+ *  - Stok kontrolü (ürün + beden)
+ *  - Stok düşme
+ *  - Mock bank üzerinden ödeme
+ *  - paymentStatus, paymentDetails
+ *  - trackingCode
+ *  - deliveryAddress, isCompleted
+ *  - Invoice PDF üretimi + e-posta gönderimi
+ *  - Response içinde invoice objesi
  */
 router.post("/", requireAuth, async (req, res) => {
   try {
@@ -24,7 +36,7 @@ router.post("/", requireAuth, async (req, res) => {
         .json({ message: "No items provided in the order." });
     }
 
-    // 1) Stok kontrolü (ürün + beden)
+    // 1) Stok kontrolü
     for (const item of items) {
       const product = await Product.findById(item.productId);
 
@@ -65,10 +77,23 @@ router.post("/", requireAuth, async (req, res) => {
       0
     );
 
-    // 4) Takip kodu
+    // 4) Mock bankadan ödeme al
+    const paymentResult = await mockBankCharge({
+      amount: totalAmount,
+      user: req.user,
+    });
+
+    if (!paymentResult || !paymentResult.success) {
+      console.error("PAYMENT FAILED:", paymentResult);
+      return res
+        .status(402)
+        .json({ message: "Payment failed. Please try again." });
+    }
+
+    // 5) Takip kodu
     const trackingCode = generateTrackingCode();
 
-    // 5) Siparişi kaydet
+    // 6) Siparişi kaydet
     const newOrder = await Order.create({
       user: req.user.id,
       items,
@@ -81,9 +106,52 @@ router.post("/", requireAuth, async (req, res) => {
           date: new Date(),
         },
       ],
+      paymentStatus: "Paid",
+      paymentDetails: {
+        transactionId: paymentResult.transactionId || "",
+        authCode: paymentResult.authCode || "",
+      },
       deliveryAddress: deliveryAddress || "",
       isCompleted: false,
     });
+
+    // Kullanıcı bilgileri (invoice + mail için)
+    const user = await User.findById(req.user.id).lean();
+
+    if (!user) {
+      console.warn(
+        "Order created but user not found for invoice/email:",
+        req.user.id
+      );
+    } else {
+      try {
+        // 7) Invoice PDF üret
+        const { invoiceNumber, pdfPath } = await generateInvoicePdf({
+          order: newOrder,
+          user,
+        });
+
+        newOrder.invoiceNumber = invoiceNumber;
+        newOrder.invoicePdfPath = pdfPath;
+        await newOrder.save();
+
+        // 8) Invoice email gönder
+        if (user.email) {
+          try {
+            await sendInvoiceEmail({ to: user.email, pdfPath });
+          } catch (emailErr) {
+            console.error("EMAIL SEND ERROR:", emailErr);
+          }
+        } else {
+          console.warn(
+            "User email missing, cannot send invoice email for user:",
+            user._id
+          );
+        }
+      } catch (invoiceErr) {
+        console.error("INVOICE GENERATION ERROR:", invoiceErr);
+      }
+    }
 
     console.log("NEW ORDER CREATED:", {
       id: newOrder._id.toString(),
@@ -92,45 +160,36 @@ router.post("/", requireAuth, async (req, res) => {
       user: req.user.id,
     });
 
-    // 6) Kullanıcı bilgisini çek (fatura ve mail için)
-    let userDoc = null;
-    try {
-      userDoc = await User.findById(req.user.id).lean();
-    } catch (e) {
-      console.error("Could not load user for invoice:", e);
-    }
-
-    const targetEmail =
-      userDoc?.email || req.user.email || req.body.email || null;
-
-    // 7) Fatura PDF üret + e-posta ile gönder
-    try {
-      const { pdfPath } = await generateInvoicePdf({
-        order: newOrder,
-        user: userDoc || {},
-      });
-
-      if (targetEmail) {
-        await sendInvoiceEmail({
-          to: targetEmail,
-          pdfPath,
-        });
-        console.log("Invoice email sent to:", targetEmail);
-      } else {
-        console.warn(
-          "No email address found for invoice; skipping email sending."
-        );
-      }
-    } catch (invoiceErr) {
-      // ÖNEMLİ: Burada hata olsa bile sipariş başarılı kalsın,
-      // sadece log atalım. Böylece sen "sipariş oluşmadı" problemi yaşamazsın.
-      console.error("INVOICE / EMAIL ERROR (order created, mail failed):", invoiceErr);
-    }
+    // Shipping address bilgisi (frontend'e gidecek)
+    const name =
+      (user &&
+        (user.name ||
+          `${user.firstName || ""} ${user.lastName || ""}`.trim())) ||
+      "Customer";
+    const address =
+      (user && (user.address || user.shippingAddress)) ||
+      newOrder.deliveryAddress ||
+      "";
+    const city = (user && user.city) || "";
+    const postalCode = (user && (user.postalCode || user.zip)) || "";
 
     return res.status(201).json({
-      message: "Order created successfully.",
+      message: "Order created and paid successfully.",
       orderId: newOrder._id,
       trackingCode: newOrder.trackingCode,
+      invoice: {
+        invoiceNumber: newOrder.invoiceNumber || "",
+        totalAmount: newOrder.totalAmount,
+        createdAt: newOrder.createdAt,
+        items: newOrder.items,
+        trackingCode: newOrder.trackingCode,
+        shippingAddress: {
+          name,
+          address,
+          city,
+          postalCode,
+        },
+      },
     });
   } catch (err) {
     console.error("ORDER ERROR:", err);
@@ -142,7 +201,7 @@ router.post("/", requireAuth, async (req, res) => {
 
 /**
  * GET /api/orders/my
- * -> login kullanıcının tüm siparişleri (order history)
+ * -> Login kullanıcının tüm siparişleri (order history)
  */
 router.get("/my", requireAuth, async (req, res) => {
   try {
@@ -161,9 +220,65 @@ router.get("/my", requireAuth, async (req, res) => {
 });
 
 /**
- * UPDATE STATUS (PUT /api/orders/:id/status)
+ * GET /api/orders/:id/invoice
+ * -> Login kullanıcının bir siparişi için invoice detayları (JSON)
+ *    (InvoicePage.js şu an JSON bekliyor, PDF değil.)
+ */
+router.get("/:id/invoice", requireAuth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).lean();
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    if (order.user.toString() !== req.user.id) {
+      return res
+        .status(403)
+        .json({ message: "Not authorized to view this invoice." });
+    }
+
+    const user = await User.findById(req.user.id).lean();
+
+    const name =
+      (user &&
+        (user.name ||
+          `${user.firstName || ""} ${user.lastName || ""}`.trim())) ||
+      "Customer";
+    const address =
+      (user && (user.address || user.shippingAddress)) ||
+      order.deliveryAddress ||
+      "";
+    const city = (user && user.city) || "";
+    const postalCode = (user && (user.postalCode || user.zip)) || "";
+
+    return res.json({
+      invoice: {
+        invoiceNumber: order.invoiceNumber || "",
+        totalAmount: order.totalAmount || 0,
+        createdAt: order.createdAt,
+        items: order.items || [],
+        trackingCode: order.trackingCode,
+        shippingAddress: {
+          name,
+          address,
+          city,
+          postalCode,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("GET /api/orders/:id/invoice error:", err);
+    return res
+      .status(500)
+      .json({ message: "Error while fetching invoice details." });
+  }
+});
+
+/**
+ * PUT /api/orders/:id/status
  * body: { status: "Processing" | "In-transit" | "Delivered" }
- * -> sadece manager
+ * -> Sadece manager
  */
 router.put("/:id/status", requireManager, async (req, res) => {
   try {
@@ -185,7 +300,7 @@ router.put("/:id/status", requireManager, async (req, res) => {
       date: new Date(),
     });
 
-    // ⭐ Delivered ise completed true olsun
+    // Delivered ise tamamlandı olarak işaretle
     order.isCompleted = status === "Delivered";
 
     await order.save();
@@ -203,7 +318,7 @@ router.put("/:id/status", requireManager, async (req, res) => {
 });
 
 /**
- * TRACK ORDER (GET /api/orders/track/:trackingCode)
+ * GET /api/orders/track/:trackingCode
  */
 router.get("/track/:trackingCode", async (req, res) => {
   try {
@@ -242,7 +357,6 @@ router.get("/admin/deliveries", requireManager, async (_req, res) => {
       .lean()
       .sort({ createdAt: -1 });
 
-    // Her order item için ayrı delivery satırı
     const deliveryList = orders.flatMap((order) =>
       order.items.map((item) => ({
         deliveryId: order._id,
