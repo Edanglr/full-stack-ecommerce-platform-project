@@ -1,28 +1,11 @@
 // src/components/OrderHistoryPage.js
 import React, { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import ProfileLayout from "./ProfileLayout";
 
 function OrderHistoryPage() {
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-
-  const location = useLocation();
-
-  const linkBaseStyle = {
-    display: "block",
-    marginBottom: "12px",
-    color: "#111",
-    textDecoration: "none",
-    fontSize: "14px",
-  };
-
-  const activeStyle = { fontWeight: "600" };
-
-  const makeStyle = (path) => ({
-    ...linkBaseStyle,
-    ...(location.pathname === path ? activeStyle : {}),
-  });
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -59,39 +42,28 @@ function OrderHistoryPage() {
     fetchOrders();
   }, []);
 
-  if (loading) return <div style={{ padding: "120px 20px" }}>Loading orders...</div>;
+  if (loading) {
+    return (
+      <ProfileLayout>
+        <div style={{ padding: "20px" }}>Loading orders...</div>
+      </ProfileLayout>
+    );
+  }
 
   return (
-    <div
-      style={{
-        maxWidth: "1100px",
-        margin: "0 auto",
-        paddingTop: "120px",
-        paddingBottom: "40px",
-        display: "flex",
-        gap: "40px",
-        alignItems: "flex-start",
-      }}
-    >
-      {/* LEFT MENU */}
-      <aside style={{ width: "180px" }}>
-        <nav>
-          <Link to="/orders" style={makeStyle("/orders")}>Orders</Link>
-          <Link to="/returns" style={makeStyle("/returns")}>Returns</Link>
-          <Link to="/payment-methods" style={makeStyle("/payment-methods")}>Payment Methods</Link>
-          <Link to="/profile" style={makeStyle("/profile")}>Profile</Link>
-          <Link to="/settings" style={makeStyle("/settings")}>Settings</Link>
-          <Link to="/favorites" style={makeStyle("/favorites")}>Favorites</Link>
-        </nav>
-      </aside>
-
-      {/* RIGHT CONTENT */}
-      <main style={{ flex: 1 }}>
+    <ProfileLayout>
+      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
         <h2 style={{ marginBottom: "20px" }}>My Orders</h2>
 
-        {error && <p style={{ color: "red", fontWeight: 500 }}>{error}</p>}
+        {error && (
+          <p style={{ color: "red", fontWeight: 500, marginBottom: "15px" }}>
+            {error}
+          </p>
+        )}
 
-        {!error && orders.length === 0 && <p>You don't have any orders yet.</p>}
+        {!error && orders.length === 0 && (
+          <p>You don't have any orders yet.</p>
+        )}
 
         {orders.map((order) => (
           <div
@@ -104,32 +76,44 @@ function OrderHistoryPage() {
             }}
           >
             <div style={{ marginBottom: "10px" }}>
-              <strong>Order ID:</strong> {order._id} <br />
-              <strong>Tracking Code:</strong> {order.trackingCode} <br />
+              <strong>Order ID:</strong> {order._id}
+              <br />
+              <strong>Tracking Code:</strong> {order.trackingCode}
+              <br />
               <strong>Date:</strong>{" "}
-              {order.createdAt ? new Date(order.createdAt).toLocaleString() : "-"} <br />
-              <strong>Status:</strong> {order.shippingStatus} <br />
+              {order.createdAt
+                ? new Date(order.createdAt).toLocaleString()
+                : "-"}
+              <br />
+              <strong>Status:</strong> {order.shippingStatus}
+              <br />
               <strong>Total:</strong> {order.totalAmount} TL
             </div>
 
-            {/* SHIPPING HISTORY */}
-            {order.shippingHistory?.length > 0 && (
+            {/* Shipping history */}
+            {order.shippingHistory && order.shippingHistory.length > 0 && (
               <>
                 <h5 style={{ marginTop: "10px" }}>Shipping History</h5>
                 <ul style={{ paddingLeft: "18px" }}>
                   {order.shippingHistory.map((entry, idx) => (
                     <li key={idx}>
-                      {new Date(entry.date).toLocaleString()} — <strong>{entry.status}</strong>
+                      {new Date(entry.date).toLocaleString()} —{" "}
+                      <strong>{entry.status}</strong>
                     </li>
                   ))}
                 </ul>
               </>
             )}
 
-            {/* ITEMS */}
+            {/* Items with images */}
             <h5 style={{ marginTop: "10px" }}>Items</h5>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+              }}
+            >
               {order.items.map((item, idx) => (
                 <div
                   key={idx}
@@ -141,10 +125,10 @@ function OrderHistoryPage() {
                     border: "1px solid #e5e5e5",
                     borderRadius: "6px",
                     backgroundColor: "#fafafa",
-                    position: "relative", // ⭐ return butonu için şart
+                    position: "relative", // Return butonu için
                   }}
                 >
-                  {/* PRODUCT IMAGE */}
+                  {/* Product Image */}
                   {item.imageUrl && (
                     <img
                       src={item.imageUrl}
@@ -154,30 +138,56 @@ function OrderHistoryPage() {
                         height: "80px",
                         objectFit: "cover",
                         borderRadius: "4px",
+                        flexShrink: 0,
                       }}
                       onError={(e) => {
-                        e.target.src = "https://via.placeholder.com/80?text=No+Image";
+                        e.target.src =
+                          "https://via.placeholder.com/80?text=No+Image";
                       }}
                     />
                   )}
 
-                  {/* DETAILS */}
+                  {/* Product Details */}
                   <div style={{ flex: 1 }}>
-                    <p style={{ margin: "0 0 4px 0", fontWeight: "600" }}>{item.name}</p>
-                    <p style={{ margin: "0 0 2px 0", color: "#666" }}>
+                    <p
+                      style={{
+                        margin: "0 0 4px 0",
+                        fontWeight: "600",
+                        fontSize: "15px",
+                      }}
+                    >
+                      {item.name}
+                    </p>
+                    <p
+                      style={{
+                        margin: "0 0 2px 0",
+                        fontSize: "14px",
+                        color: "#666",
+                      }}
+                    >
                       Size: {item.size}, Qty: {item.quantity}
                     </p>
-                    <p style={{ margin: 0, fontWeight: "500" }}>{item.price} TL</p>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: "14px",
+                        fontWeight: "500",
+                      }}
+                    >
+                      {item.price} TL
+                    </p>
                   </div>
 
-                  {/* ⭐ RETURN BUTTON */}
+                  {/* Return Button – sağ alt köşe */}
                   <button
-                    onClick={() => alert("Return request for: " + item.name)}
+                    onClick={() =>
+                      alert("Return request for: " + item.name)
+                    }
                     style={{
                       position: "absolute",
                       right: "10px",
                       bottom: "10px",
-                      padding: "6px 10px",
+                      padding: "6px 12px",
                       fontSize: "12px",
                       backgroundColor: "black",
                       color: "white",
@@ -193,8 +203,8 @@ function OrderHistoryPage() {
             </div>
           </div>
         ))}
-      </main>
-    </div>
+      </div>
+    </ProfileLayout>
   );
 }
 
