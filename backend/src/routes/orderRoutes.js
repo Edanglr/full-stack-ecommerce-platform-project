@@ -6,7 +6,6 @@ import User from "../models/User.js";
 
 import { generateTrackingCode } from "../utils/trackingCode.js";
 import { requireAuth, requireManager } from "../middleware/auth.js";
-
 import { mockBankCharge } from "../utils/mockBank.js";
 import { generateInvoicePdf } from "../utils/invoice.js";
 import { sendInvoiceEmail } from "../utils/email.js";
@@ -14,20 +13,18 @@ import { sendInvoiceEmail } from "../utils/email.js";
 const router = express.Router();
 
 /**
- * CREATE ORDER (POST /api/orders)
- * -> sadece login kullanıcı
+ * POST /api/orders
+ * -> Sadece login kullanıcı
  *
- * Özellikler (merged):
- * - Stok kontrolü (ürün + beden)
- * - Stok düşme
- * - Mock bank üzerinden ödeme (mockBankCharge)
- * - paymentStatus: "Paid", paymentDetails
- * - trackingCode üretme
- * - deliveryAddress alanı (arkadaşının kodu)
- * - isCompleted: false (başlangıç)
- * - Invoice PDF üretme + dosyaya kaydetme
- * - Kullanıcının mailine invoice PDF gönderme
- * - Response içinde invoice objesi döndürme
+ * Özellikler:
+ *  - Stok kontrolü (ürün + beden)
+ *  - Stok düşme
+ *  - Mock bank üzerinden ödeme
+ *  - paymentStatus, paymentDetails
+ *  - trackingCode
+ *  - deliveryAddress, isCompleted
+ *  - Invoice PDF üretimi + e-posta gönderimi
+ *  - Response içinde invoice objesi
  */
 router.post("/", requireAuth, async (req, res) => {
   try {
@@ -39,7 +36,7 @@ router.post("/", requireAuth, async (req, res) => {
         .json({ message: "No items provided in the order." });
     }
 
-    // 1) Stok kontrolü (ürün + beden)
+    // 1) Stok kontrolü
     for (const item of items) {
       const product = await Product.findById(item.productId);
 
@@ -96,7 +93,7 @@ router.post("/", requireAuth, async (req, res) => {
     // 5) Takip kodu
     const trackingCode = generateTrackingCode();
 
-    // 6) Siparişi kaydet (ödeme başarılı)
+    // 6) Siparişi kaydet
     const newOrder = await Order.create({
       user: req.user.id,
       items,
@@ -114,12 +111,11 @@ router.post("/", requireAuth, async (req, res) => {
         transactionId: paymentResult.transactionId || "",
         authCode: paymentResult.authCode || "",
       },
-      // Arkadaşının eklediği alanlar:
       deliveryAddress: deliveryAddress || "",
       isCompleted: false,
     });
 
-    // Kullanıcı bilgilerini çek (adres + email için)
+    // Kullanıcı bilgileri (invoice + mail için)
     const user = await User.findById(req.user.id).lean();
 
     if (!user) {
@@ -157,14 +153,14 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    console.log("NEW ORDER CREATED (PAID):", {
+    console.log("NEW ORDER CREATED:", {
       id: newOrder._id.toString(),
       trackingCode: newOrder.trackingCode,
       totalAmount: newOrder.totalAmount,
       user: req.user.id,
     });
 
-    // Shipping address bilgisi hazırlama (invoice objesi için)
+    // Shipping address bilgisi (frontend'e gidecek)
     const name =
       (user &&
         (user.name ||
@@ -205,8 +201,7 @@ router.post("/", requireAuth, async (req, res) => {
 
 /**
  * GET /api/orders/my
- * -> login kullanıcının tüm siparişleri (order history)
- * Arkadaşının versiyonundaki gibi items.productId populate ediliyor.
+ * -> Login kullanıcının tüm siparişleri (order history)
  */
 router.get("/my", requireAuth, async (req, res) => {
   try {
@@ -226,7 +221,8 @@ router.get("/my", requireAuth, async (req, res) => {
 
 /**
  * GET /api/orders/:id/invoice
- * -> login kullanıcının bir siparişi için invoice detayları
+ * -> Login kullanıcının bir siparişi için invoice detayları (JSON)
+ *    (InvoicePage.js şu an JSON bekliyor, PDF değil.)
  */
 router.get("/:id/invoice", requireAuth, async (req, res) => {
   try {
@@ -280,14 +276,9 @@ router.get("/:id/invoice", requireAuth, async (req, res) => {
 });
 
 /**
- * UPDATE STATUS (PUT /api/orders/:id/status)
+ * PUT /api/orders/:id/status
  * body: { status: "Processing" | "In-transit" | "Delivered" }
- * -> sadece manager
- *
- * Arkadaşının kodundaki gibi:
- * - status güncelleniyor
- * - shippingHistory'ye push ediliyor
- * - status "Delivered" ise isCompleted = true
+ * -> Sadece manager
  */
 router.put("/:id/status", requireManager, async (req, res) => {
   try {
@@ -327,7 +318,7 @@ router.put("/:id/status", requireManager, async (req, res) => {
 });
 
 /**
- * TRACK ORDER (GET /api/orders/track/:trackingCode)
+ * GET /api/orders/track/:trackingCode
  */
 router.get("/track/:trackingCode", async (req, res) => {
   try {
@@ -358,7 +349,6 @@ router.get("/track/:trackingCode", async (req, res) => {
 /**
  * GET /api/orders/admin/deliveries
  * -> product manager / delivery department view
- * (Arkadaşının eklediği endpoint)
  */
 router.get("/admin/deliveries", requireManager, async (_req, res) => {
   try {
@@ -396,7 +386,6 @@ router.get("/admin/deliveries", requireManager, async (_req, res) => {
 /**
  * GET /api/orders/admin/invoices
  * -> invoices view for product manager
- * (Arkadaşının eklediği endpoint)
  */
 router.get("/admin/invoices", requireManager, async (_req, res) => {
   try {

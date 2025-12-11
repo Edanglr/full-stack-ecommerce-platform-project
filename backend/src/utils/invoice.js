@@ -1,5 +1,4 @@
 // backend/src/utils/invoice.js
-
 import fs from "fs";
 import path from "path";
 import PDFDocument from "pdfkit";
@@ -8,152 +7,166 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// PDF'lerin kaydedileceği klasör
+const INVOICE_DIR = path.join(__dirname, "..", "..", "invoices");
+
+// Klasör yoksa oluştur
+if (!fs.existsSync(INVOICE_DIR)) {
+  fs.mkdirSync(INVOICE_DIR, { recursive: true });
+}
+
 /**
- * PDF faturasını üretir ve kaydeder.
- * @param {Object} params
- * @param {Object} params.order - Order dokümanı
- * @param {Object} params.user  - User dokümanı
- * @returns {Promise<{ invoiceNumber: string, pdfPath: string }>}
+ * Belirtilen order + user için PDF invoice üretir.
+ * Sonuç: { invoiceNumber, pdfPath }
  */
-export async function generateInvoicePdf({ order, user }) {
-  if (!order || !user) {
-    throw new Error("Order and user are required to generate invoice.");
-  }
+export function generateInvoicePdf({ order, user }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const baseId = (order._id || "").toString();
+      const shortId = baseId.slice(-6);
+      const datePart = new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, "");
 
-  // invoices klasörünü backend kökünde oluştur (backend/invoices)
-  const invoicesDir = path.join(__dirname, "..", "..", "invoices");
-  if (!fs.existsSync(invoicesDir)) {
-    fs.mkdirSync(invoicesDir, { recursive: true });
-  }
+      const invoiceNumber =
+        order.invoiceNumber || `INV-${datePart}-${shortId || "000000"}`;
 
-  // Tarih bilgisini hazırla
-  const createdAt = order.createdAt ? new Date(order.createdAt) : new Date();
-  const year = createdAt.getFullYear();
-  const month = String(createdAt.getMonth() + 1).padStart(2, "0");
-  const day = String(createdAt.getDate()).padStart(2, "0");
+      const pdfPath = path.join(INVOICE_DIR, `invoice-${baseId}.pdf`);
 
-  // Invoice number: INV-YYYYMMDD-<orderId ilk 6 hane>
-  const orderIdStr = String(order._id || "");
-  const orderIdShort = orderIdStr.slice(0, 6) || "000000";
-  const invoiceNumber = `INV-${year}${month}${day}-${orderIdShort}`;
+      const doc = new PDFDocument({ size: "A4", margin: 50 });
+      const writeStream = fs.createWriteStream(pdfPath);
 
-  // PDF dosya yolu: invoices/invoice-<orderId>.pdf
-  const fileName = `invoice-${orderIdStr || Date.now()}.pdf`;
-  const pdfPath = path.join(invoicesDir, fileName);
+      writeStream.on("finish", () => {
+        console.log("✅ Invoice PDF written:", pdfPath);
+        resolve({ invoiceNumber, pdfPath });
+      });
 
-  // PDF oluşturma
-  const doc = new PDFDocument({ margin: 50 });
-  const writeStream = fs.createWriteStream(pdfPath);
-  doc.pipe(writeStream);
+      writeStream.on("error", (err) => {
+        console.error("✗ Invoice PDF write error:", err);
+        reject(err);
+      });
 
-  // Başlık
-  doc
-    .fontSize(20)
-    .text("INVOICE", { align: "center" })
-    .moveDown();
+      doc.pipe(writeStream);
 
-  // Invoice bilgileri
-  doc
-    .fontSize(12)
-    .text(`Invoice Number: ${invoiceNumber}`)
-    .text(`Invoice Date  : ${year}-${month}-${day}`)
-    .moveDown();
+      // ====== HEADER ======
+      doc.fontSize(20).text("La Strada - Invoice", { align: "center" });
+      doc.moveDown();
 
-  // Kullanıcı / fatura adresi
-  const name = user.name || `${user.firstName || ""} ${user.lastName || ""}`.trim();
-  const address = user.address || user.shippingAddress || "";
-  const city = user.city || "";
-  const postalCode = user.postalCode || user.zip || "";
+      doc.fontSize(12);
+      doc.text(`Invoice No: ${invoiceNumber}`);
+      doc.text(`Order ID: ${baseId}`);
+      if (order.trackingCode) {
+        doc.text(`Tracking Code: ${order.trackingCode}`);
+      }
+      const created = order.createdAt
+        ? new Date(order.createdAt)
+        : new Date();
+      doc.text(`Date: ${created.toLocaleString()}`);
 
-  doc
-    .fontSize(12)
-    .text("Bill To:", { underline: true })
-    .moveDown(0.3)
-    .text(name || "Customer")
-    .text(address || "")
-    .text(city || "")
-    .text(postalCode || "")
-    .moveDown();
+      doc.moveDown();
 
-  // Çizgi
-  doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown();
+      // ====== BILLING INFO ======
+      const fullName =
+        user?.name ||
+        `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+        "Customer";
 
-  // Ürün listesi başlıkları
-  doc
-    .fontSize(12)
-    .text("Item", 50, doc.y + 10)
-    .text("Size", 250, doc.y)
-    .text("Qty", 320, doc.y, { width: 50, align: "right" })
-    .text("Price", 380, doc.y, { width: 80, align: "right" })
-    .text("Total", 470, doc.y, { width: 80, align: "right" })
-    .moveDown();
+      doc.text("Bill To:");
+      doc.text(fullName);
 
-  doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+      const addr =
+        user?.address || user?.shippingAddress || order.deliveryAddress || "";
+      if (addr) doc.text(addr);
 
-  // Ürün satırları
-  const items = Array.isArray(order.items) ? order.items : [];
-  let yPos = doc.y + 5;
+      const cityLine = [user?.city, user?.postalCode || user?.zip]
+        .filter(Boolean)
+        .join(" ");
+      if (cityLine) doc.text(cityLine);
 
-  items.forEach((item) => {
-    const nameText = item.name || item.productName || "Product";
-    const sizeText = item.size || item.variant || "";
-    const qty = item.quantity || 0;
-    const price = item.price || 0;
-    const lineTotal = qty * price;
+      doc.moveDown();
 
-    doc
-      .fontSize(11)
-      .text(nameText, 50, yPos, { width: 190 })
-      .text(sizeText, 250, yPos, { width: 60 })
-      .text(String(qty), 320, yPos, { width: 50, align: "right" })
-      .text(price.toFixed(2), 380, yPos, { width: 80, align: "right" })
-      .text(lineTotal.toFixed(2), 470, yPos, { width: 80, align: "right" });
+      // ====== ITEMS TABLE ======
+      doc.text("Items:", { underline: true });
+      doc.moveDown(0.5);
 
-    yPos += 18;
+      const items = Array.isArray(order.items) ? order.items : [];
 
-    // Sayfa sonu kontrolü (çok ürün olursa)
-    if (yPos > 720) {
-      doc.addPage();
-      yPos = 50;
+      if (items.length === 0) {
+        doc.text("No items in this order.");
+      } else {
+        const tableTop = doc.y;
+        const productX = 50;
+        const qtyX = 300;
+        const priceX = 360;
+        const totalX = 430;
+
+        doc.font("Helvetica-Bold");
+        doc.text("Product", productX, tableTop);
+        doc.text("Qty", qtyX, tableTop, { width: 40, align: "right" });
+        doc.text("Price", priceX, tableTop, { width: 60, align: "right" });
+        doc.text("Line Total", totalX, tableTop, {
+          width: 80,
+          align: "right",
+        });
+
+        doc.moveDown();
+        doc.font("Helvetica");
+
+        let position = tableTop + 20;
+
+        items.forEach((item) => {
+          const qty = item.quantity || 0;
+          const price = item.price || 0;
+          const lineTotal = qty * price;
+
+          doc.text(
+            item.name || item.productName || "Product",
+            productX,
+            position,
+            { width: 230 }
+          );
+          doc.text(String(qty), qtyX, position, {
+            width: 40,
+            align: "right",
+          });
+          doc.text(
+            price.toFixed ? price.toFixed(2) : price,
+            priceX,
+            position,
+            { width: 60, align: "right" }
+          );
+          doc.text(
+            lineTotal.toFixed(2),
+            totalX,
+            position,
+            { width: 80, align: "right" }
+          );
+
+          position += 18;
+        });
+
+        // Üst çizgi
+        doc.moveTo(productX, tableTop - 5)
+          .lineTo(550, tableTop - 5)
+          .stroke();
+      }
+
+      doc.moveDown();
+      doc.moveDown();
+
+      // ====== TOTAL ======
+      const totalAmount =
+        typeof order.totalAmount === "number" ? order.totalAmount : 0;
+
+      doc.font("Helvetica-Bold");
+      doc.text(`Total: ${totalAmount.toFixed(2)} TL`, {
+        align: "right",
+      });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
     }
   });
-
-  doc.moveDown();
-
-  // Toplam tutar
-  const totalAmount =
-    typeof order.totalAmount === "number" ? order.totalAmount : 0;
-
-  doc
-    .moveDown()
-    .fontSize(12)
-    .moveTo(50, doc.y)
-    .lineTo(550, doc.y)
-    .stroke()
-    .moveDown()
-    .fontSize(14)
-    .text(`Total Amount: ${totalAmount.toFixed(2)}`, {
-      align: "right",
-    });
-
-  doc.moveDown(2);
-  doc
-    .fontSize(10)
-    .fillColor("gray")
-    .text(
-      "Thank you for your purchase!",
-      { align: "center" }
-    )
-    .fillColor("black");
-
-  // PDF'i bitir
-  doc.end();
-
-  // Yazma işlemi tamamlanınca Promise'i resolve et
-  await new Promise((resolve, reject) => {
-    writeStream.on("finish", resolve);
-    writeStream.on("error", reject);
-  });
-
-  return { invoiceNumber, pdfPath };
 }

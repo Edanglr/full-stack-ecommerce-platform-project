@@ -23,36 +23,108 @@ function ProductDetail() {
 
   const { addToCart } = useCart();
 
-  // ÜRÜN + ONAYLI YORUMLAR
-  useEffect(() => {
-    const fetchProduct = async () => {
-      try {
-        const res = await fetch(`http://localhost:5050/api/products/${id}`);
-        if (!res.ok) {
-          console.error("Product fetch error, status:", res.status);
-          return;
-        }
-        const data = await res.json();
+  
+  const [isFavorite, setIsFavorite] = useState(false);
 
-        // Backend iki şekilde gelebilir:
-        // 1) { product, comments }
-        // 2) sadece product
-        if (data && data.product) {
-          setProduct(data.product);
-          setComments(data.comments || []);
-        } else {
-          setProduct(data);
-          setComments([]);
-        }
+  useEffect(() => {
+    const loadFavoriteStatus = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      try {
+        const res = await fetch("http://localhost:5050/api/favorites/my", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const data = await res.json();
+        const productIds = data.map((f) => f.product._id);
+
+        setIsFavorite(productIds.includes(id));
       } catch (err) {
-        console.error("Product fetch error:", err);
+        console.error("Favorite load error:", err);
       }
     };
 
-    fetchProduct();
+    loadFavoriteStatus();
   }, [id]);
 
-  // RATING ÖZETİ
+
+  const toggleFavorite = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login to add favorites.");
+      return;
+    }
+
+    const previousFavoriteState = isFavorite; 
+    
+
+    setIsFavorite(!isFavorite);
+
+    try {
+      const res = await fetch("http://localhost:5050/api/favorites/toggle", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ productId: id }),
+      });
+
+      if (!res.ok) {
+        setIsFavorite(previousFavoriteState); 
+        const errorData = await res.json().catch(() => ({ message: "Unknown error" }));
+        console.error("Favorite toggle failed:", errorData);
+        alert(`Failed to complete action: ${errorData.message || res.statusText}`);
+        return;
+      }
+
+      const data = await res.json();
+      console.log("Favorite API Response (Success):", data);
+
+     
+      
+    } catch (err) {
+      setIsFavorite(previousFavoriteState); 
+      console.error("Favorite toggle network error:", err);
+      alert("Network error: Could not connect to the server.");
+    }
+  };
+
+
+  useEffect(() => {
+    const fetchProductAndComments = async () => {
+      try {
+        const res = await fetch(`http://localhost:5050/api/products/${id}`);
+
+        if (!res.ok) {
+          console.error("Product fetch error. Status:", res.status);
+          setProduct(null); 
+          return;
+        }
+
+        const data = await res.json();
+        const productData = data.product || data; 
+        
+        if (!productData || typeof productData !== 'object' || !productData._id) {
+             console.error("Invalid or missing product data received:", data);
+             setProduct(null);
+             return;
+        }
+
+        setProduct(productData);
+        setComments(data.comments || []); 
+
+      } catch (err) {
+        console.error("Product fetch network or parsing error:", err);
+        setProduct(null);
+      }
+    };
+
+    fetchProductAndComments();
+  }, [id]);
+
+  // RATING ÖZETİ GETİR
   useEffect(() => {
     const fetchRating = async () => {
       try {
@@ -60,7 +132,6 @@ function ProductDetail() {
           `http://localhost:5050/api/ratings/product/${id}`
         );
         if (!res.ok) return;
-
         const data = await res.json();
         setAverageRating(data.averageRating || 0);
         setRatingCount(data.ratingCount || 0);
@@ -122,7 +193,7 @@ function ProductDetail() {
     alert("Product added to cart.");
   };
 
-  // BUTON MANTIĞI
+  // BUTON STATES
   const hasAnyStock = totalStock > 0;
   const hasSelectedSize = !!selectedSize;
 
@@ -143,41 +214,35 @@ function ProductDetail() {
     addButtonLabel = "Add to Cart";
   }
 
-  // ORTALAMA YILDIZLAR
+  // Ortalama yıldızlar
   const renderAverageStars = (value) => {
     const rounded = Math.round(value || 0);
-    const stars = [];
-    for (let i = 1; i <= 5; i += 1) {
-      stars.push(
-        <span key={i} className={i <= rounded ? "pd-star filled" : "pd-star"}>
-          {i <= rounded ? "★" : "☆"}
-        </span>
-      );
-    }
-    return stars;
+    return [...Array(5)].map((_, i) => (
+      <span key={i} className={i < rounded ? "pd-star filled" : "pd-star"}>
+        {i < rounded ? "★" : "☆"}
+      </span>
+    ));
   };
 
-  // ETKİLEŞİMLİ YILDIZLAR
+  // Etkileşimli yıldızlar
   const renderInteractiveStars = () => {
-    const stars = [];
-    for (let i = 1; i <= 5; i += 1) {
-      const filled = (hoverRating || userRating) >= i;
-      stars.push(
+    return [...Array(5)].map((_, i) => {
+      const index = i + 1;
+      const filled = (hoverRating || userRating) >= index;
+      return (
         <span
           key={i}
           className={filled ? "pd-star clickable filled" : "pd-star clickable"}
-          onMouseEnter={() => setHoverRating(i)}
+          onMouseEnter={() => setHoverRating(index)}
           onMouseLeave={() => setHoverRating(0)}
-          onClick={() => setUserRating(i)}
+          onClick={() => setUserRating(index)}
         >
           {filled ? "★" : "☆"}
         </span>
       );
-    }
-    return stars;
+    });
   };
 
-  // RATING GÖNDER
   const handleSubmitRating = async () => {
     if (!userRating) {
       setRatingMessage("Please select a star rating first.");
@@ -221,10 +286,12 @@ function ProductDetail() {
           ? "Your rating & comment have been saved. Comment awaits manager approval."
           : "Your rating has been saved. Thank you!"
       );
+
       setCommentText("");
       setUserRating(0);
       setHoverRating(0);
 
+      // Eğer backend yeni yorum listesini de döndürüyorsa, burada güncelleyebilirsin:
       if (data.comments) {
         setComments(data.comments);
       }
@@ -247,7 +314,6 @@ function ProductDetail() {
 
   return (
     <div className="product-page-wrapper">
-      {/* ÜRÜN DETAY KISMI */}
       <div className="pd-container">
         <div className="pd-left">
           <img
@@ -255,14 +321,21 @@ function ProductDetail() {
             alt={product.name}
             className="pd-image"
             onError={(e) => {
-              e.target.src =
-                "https://via.placeholder.com/500?text=No+Image";
+              e.target.src = "https://via.placeholder.com/500?text=No+Image";
             }}
           />
         </div>
 
         <div className="pd-right">
-          <h1 className="pd-title">{product.name}</h1>
+
+          {/* ⭐ Ürün adı + Favori kalp */}
+          <div className="pd-title-row">
+            <h1 className="pd-title">{product.name}</h1>
+
+            <button className="favorite-btn" onClick={toggleFavorite}>
+              {isFavorite ? "❤️" : "🤍"}
+            </button>
+          </div>
 
           {/* Rating Özeti */}
           <div className="pd-rating-block">
@@ -328,7 +401,7 @@ function ProductDetail() {
         </div>
       </div>
 
-      {/* FEATURES / ICON CARDS */}
+      {/* FEATURES */}
       <div className="features-container">
         <div className="info-card">
           <img src="/icons/cotton.jpeg" className="info-icon" alt="Cotton" />
@@ -365,7 +438,6 @@ function ProductDetail() {
       <div className="comment-section">
         <h2>Customer Reviews</h2>
 
-        {/* Yeni yorum formu */}
         <div className="add-comment-box">
           <h3>Add a Review</h3>
 
@@ -400,7 +472,6 @@ function ProductDetail() {
           </p>
         </div>
 
-        {/* Onaylı yorumlar */}
         {comments.length === 0 && <p>No approved comments yet.</p>}
 
         {comments.map((c) => (

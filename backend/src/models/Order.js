@@ -32,27 +32,39 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
 
-    user: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "User" 
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
 
-    // ⭐ Tracking code added
-    trackingCode: { 
-      type: String, 
-      unique: true 
+    // Takip kodu
+    trackingCode: {
+      type: String,
+      unique: true,
     },
 
-    // ⭐ Current shipping status
+    // Şu anki kargo durumu
     shippingStatus: {
       type: String,
-      default: "Processing", // was "Hazırlanıyor"
+      default: "Processing",
     },
 
-    // ⭐ Shipping history timeline
+    // Zaman çizelgesi
     shippingHistory: {
       type: [shippingHistorySchema],
       default: [],
+    },
+
+    // ⭐ Delivery address (metinde isteniyordu)
+    deliveryAddress: {
+      type: String,
+      default: "",
+    },
+
+    // ⭐ Teslimat tamamlandı mı? (metindeki "completed" alanı)
+    isCompleted: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }
