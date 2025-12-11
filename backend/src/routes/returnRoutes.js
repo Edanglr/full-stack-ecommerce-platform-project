@@ -16,13 +16,16 @@ router.post("/request", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
+    // login olmuş kullanıcının id'si (auth middleware'den gelen)
+    const userId = req.user.id || req.user._id;
+
     // 1) Sipariş kullanıcının mı?
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    if (order.user.toString() !== req.user._id.toString()) {
+    if (order.user.toString() !== userId.toString()) {
       return res.status(403).json({ message: "Not authorized." });
     }
 
@@ -39,13 +42,16 @@ router.post("/request", requireAuth, async (req, res) => {
       });
     }
 
-    // 3) Return kaydı oluştur (status: Requested)
+    const finalSize = size || orderItem.size;
+    const finalQty = quantity || orderItem.quantity;
+
+    // 3) Return kaydı oluştur
     const returnRequest = await ReturnRequest.create({
-      user: req.user._id,
+      user: userId,
       order: orderId,
       product: productId,
-      size: size || orderItem.size,
-      quantity: quantity || orderItem.quantity,
+      size: finalSize,
+      quantity: finalQty,
       reason,
       status: "Requested",
     });
@@ -58,15 +64,11 @@ router.post("/request", requireAuth, async (req, res) => {
     order.shippingStatus = "Return requested";
     await order.save();
 
-    // 5) Ürünün stokunu geri ekle
-    //    Eski ürünlerde model/serialNumber/distributor eksik olabildiği için
-    //    product.save() kullanmıyoruz, doğrudan $inc ile güncelliyoruz.
-    const qty = quantity || orderItem.quantity;
-    const sizeKey = orderItem.size;
-
-    await Product.findByIdAndUpdate(productId, {
-      $inc: { [`sizes.${sizeKey}`]: qty },
-    });
+    // 5) Ürünün stokunu geri ekle (Mongoose validation'a takılmamak için updateOne)
+    await Product.updateOne(
+      { _id: productId },
+      { $inc: { [`sizes.${finalSize}`]: finalQty } }
+    );
 
     return res.status(201).json(returnRequest);
   } catch (err) {
@@ -80,7 +82,9 @@ router.post("/request", requireAuth, async (req, res) => {
 // 🔹 GET /api/returns/my
 router.get("/my", requireAuth, async (req, res) => {
   try {
-    const returns = await ReturnRequest.find({ user: req.user._id })
+    const userId = req.user.id || req.user._id;
+
+    const returns = await ReturnRequest.find({ user: userId })
       .populate("product")
       .populate("order")
       .sort({ createdAt: -1 });
