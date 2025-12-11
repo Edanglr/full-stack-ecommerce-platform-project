@@ -158,7 +158,6 @@ function AdminProductManagerPage() {
   if (loading) return <p>Loading products...</p>;
 
   return (
-    {/* 🔥 Sadece buraya marginTop eklendi */}
     <div style={{ padding: 20, marginTop: 120 }}>
       <h2>Product Manager Panel</h2>
 
