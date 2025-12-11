@@ -39,7 +39,7 @@ router.post("/request", requireAuth, async (req, res) => {
       });
     }
 
-    // 3) Return kaydı oluştur
+    // 3) Return kaydı oluştur (status: Requested)
     const returnRequest = await ReturnRequest.create({
       user: req.user._id,
       order: orderId,
@@ -58,20 +58,15 @@ router.post("/request", requireAuth, async (req, res) => {
     order.shippingStatus = "Return requested";
     await order.save();
 
-    // 5) Ürünün stokunu geri ekle (validation'a takılmadan)
-    try {
-      const qty = quantity || orderItem.quantity;
-      const sizeKey = orderItem.size;
+    // 5) Ürünün stokunu geri ekle
+    //    Eski ürünlerde model/serialNumber/distributor eksik olabildiği için
+    //    product.save() kullanmıyoruz, doğrudan $inc ile güncelliyoruz.
+    const qty = quantity || orderItem.quantity;
+    const sizeKey = orderItem.size;
 
-      await Product.updateOne(
-        { _id: productId },
-        { $inc: { [`sizes.${sizeKey}`]: qty } },
-        { runValidators: false } // önemli: model/serialNumber/distributor eksikse bile patlama
-      );
-    } catch (stockErr) {
-      console.error("STOCK RESTORE ERROR (return OK, stock failed):", stockErr);
-      // Burada hata olsa bile return isteğini iptal etmiyoruz.
-    }
+    await Product.findByIdAndUpdate(productId, {
+      $inc: { [`sizes.${sizeKey}`]: qty },
+    });
 
     return res.status(201).json(returnRequest);
   } catch (err) {
