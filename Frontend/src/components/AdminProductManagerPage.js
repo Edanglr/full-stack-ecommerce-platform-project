@@ -158,13 +158,19 @@ function AdminProductManagerPage() {
   if (loading) return <p>Loading products...</p>;
 
   return (
-    <div style={{ padding: 20, marginTop: 120 }}>
+    // 🔽 Navbar ile arayı biraz kısalttım: marginTop 120 -> 80
+    <div style={{ padding: 20, marginTop: 80 }}>
       <h2>Product Manager Panel</h2>
 
       {/* ADD PRODUCT FORM */}
       <h3>Add New Product</h3>
 
-      <form onSubmit={handleCreateProduct} style={{ marginBottom: 30 }}>
+      {/* 🔽 Formu çok genişletmemek için maxWidth verdim,
+          içteki inputlar 100% ile bu alanı dolduruyor */}
+      <form
+        onSubmit={handleCreateProduct}
+        style={{ marginBottom: 30, maxWidth: 700 }}
+      >
         {/* NAME */}
         <Field label="Name">
           <input
@@ -173,6 +179,7 @@ function AdminProductManagerPage() {
             value={form.name}
             onChange={handleChange}
             required
+            style={{ width: "100%" }}
           />
         </Field>
 
@@ -182,6 +189,7 @@ function AdminProductManagerPage() {
             name="description"
             value={form.description}
             onChange={handleChange}
+            style={{ width: "100%", minHeight: 80 }}
           />
         </Field>
 
@@ -193,6 +201,7 @@ function AdminProductManagerPage() {
             value={form.price}
             onChange={handleChange}
             required
+            style={{ width: "100%" }}
           />
         </Field>
 
@@ -204,6 +213,7 @@ function AdminProductManagerPage() {
             value={form.category}
             onChange={handleChange}
             required
+            style={{ width: "100%" }}
           />
         </Field>
 
@@ -214,6 +224,7 @@ function AdminProductManagerPage() {
             name="imageUrl"
             value={form.imageUrl}
             onChange={handleChange}
+            style={{ width: "100%" }}
           />
         </Field>
 
@@ -225,6 +236,7 @@ function AdminProductManagerPage() {
             value={form.model}
             onChange={handleChange}
             required
+            style={{ width: "100%" }}
           />
         </Field>
 
@@ -235,6 +247,7 @@ function AdminProductManagerPage() {
             value={form.serialNumber}
             onChange={handleChange}
             required
+            style={{ width: "100%" }}
           />
         </Field>
 
@@ -245,6 +258,7 @@ function AdminProductManagerPage() {
             value={form.warrantyStatus}
             onChange={handleChange}
             required
+            style={{ width: "100%" }}
           />
         </Field>
 
@@ -255,12 +269,13 @@ function AdminProductManagerPage() {
             value={form.distributor}
             onChange={handleChange}
             required
+            style={{ width: "100%" }}
           />
         </Field>
 
         {/* SIZES */}
         <h4>Initial Stock per Size</h4>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
           {["XS", "S", "M", "L", "XL"].map((size) => (
             <div key={size}>
               <label>{size}</label>
@@ -324,8 +339,10 @@ function AdminProductManagerPage() {
 
 function Field({ label, children }) {
   return (
-    <div style={{ marginBottom: 10 }}>
-      <label style={{ fontWeight: "bold" }}>{label}</label>
+    <div style={{ marginBottom: 12 }}>
+      <label style={{ fontWeight: "bold", display: "block", marginBottom: 4 }}>
+        {label}
+      </label>
       <div>{children}</div>
     </div>
   );
