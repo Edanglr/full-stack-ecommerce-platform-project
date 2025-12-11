@@ -16,13 +16,16 @@ router.post("/request", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
+    // 🔸 Token'dan gelen user id (id veya _id olabilir)
+    const userId = req.user._id || req.user.id;
+
     // 1) Sipariş kullanıcının mı?
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    if (order.user.toString() !== req.user._id.toString()) {
+    if (userId && order.user.toString() !== userId.toString()) {
       return res.status(403).json({ message: "Not authorized." });
     }
 
@@ -41,7 +44,7 @@ router.post("/request", requireAuth, async (req, res) => {
 
     // 3) Return kaydı oluştur
     const returnRequest = await ReturnRequest.create({
-      user: req.user._id,
+      user: userId,
       order: orderId,
       product: productId,
       size: size || orderItem.size,
@@ -83,7 +86,9 @@ router.post("/request", requireAuth, async (req, res) => {
 // 🔹 GET /api/returns/my
 router.get("/my", requireAuth, async (req, res) => {
   try {
-    const returns = await ReturnRequest.find({ user: req.user._id })
+    const userId = req.user._id || req.user.id;
+
+    const returns = await ReturnRequest.find({ user: userId })
       .populate("product")
       .populate("order")
       .sort({ createdAt: -1 });
