@@ -66,12 +66,11 @@ function AdminOrdersPage() {
   }
 
   return (
-    {/* 🔥 Buraya da marginTop eklendi */}
     <div style={{ padding: 20, marginTop: 120 }}>
       <h2>Delivery List (Product Manager)</h2>
       <p>
-        Below is the delivery list with delivery ID, customer, product, quantity,
-        total price, address and completion status.
+        Below is the delivery list with delivery ID, customer, product,
+        quantity, total price, address and completion status.
       </p>
 
       {deliveries.length === 0 && <p>No deliveries yet.</p>}
