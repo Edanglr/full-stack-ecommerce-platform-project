@@ -12,6 +12,8 @@ export default function PaymentPage() {
     cvv: "",
   });
 
+  const [showCVV, setShowCVV] = useState(false);
+
   const handleChange = (e) => {
         let { name, value } = e.target;
 
@@ -72,18 +74,36 @@ export default function PaymentPage() {
               maxLength={5}
             />
           </Form.Group>
+                <Form.Group className="mb-3">
+                    <Form.Label>CVV</Form.Label>
 
-          <Form.Group className="mb-3">
-            <Form.Label>CVV</Form.Label>
-            <Form.Control
-              type="password"
-              name="cvv"
-              placeholder="123"
-              value={form.cvv}
-              onChange={handleChange}
-              maxLength={3}
-            />
-          </Form.Group>
+                    <div style={{ position: "relative" }}>
+                        <Form.Control
+                            type={showCVV ? "text" : "password"}
+                            name="cvv"
+                            placeholder="123"
+                            value={form.cvv}
+                            onChange={handleChange}
+                            maxLength={3}
+                        />
+
+                        <span
+                            onClick={() => setShowCVV(!showCVV)}
+                            style={{
+                                position: "absolute",
+                                right: "10px",
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                cursor: "pointer",
+                                fontSize: "14px",
+                                opacity: 0.7,
+                            }}
+                        >
+                            {showCVV ? "Hide" : "Show"}
+                        </span>
+                    </div>
+                </Form.Group>
+
         </Form>
 
         <hr className="my-4" />
