@@ -24,6 +24,10 @@ import ProductDetail from "./components/ProductDetail";
 import AdminCommentsPage from "./components/AdminCommentsPage";
 import OrderHistoryPage from "./components/OrderHistoryPage";
 
+// ✅ Admin sayfaları
+import AdminProductManagerPage from "./components/AdminProductManagerPage";
+import AdminOrdersPage from "./components/AdminOrdersPage";
+
 // Senin eklediğin InvoicePage
 import InvoicePage from "./components/InvoicePage";
 
@@ -98,8 +102,15 @@ function App() {
             <Route path="/favorites" element={<FavoritesPage />} />
 
             {/* Siparişler & admin */}
-            <Route path="/admin/comments" element={<AdminCommentsPage />} />
             <Route path="/orders" element={<OrderHistoryPage />} />
+            <Route path="/admin/comments" element={<AdminCommentsPage />} />
+
+            {/* ✅ Yeni admin panel route'ları */}
+            <Route
+              path="/admin/products"
+              element={<AdminProductManagerPage />}
+            />
+            <Route path="/admin/orders" element={<AdminOrdersPage />} />
 
             {/* Invoice sayfası */}
             <Route path="/invoice/:orderId" element={<InvoicePage />} />
