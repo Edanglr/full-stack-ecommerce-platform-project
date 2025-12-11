@@ -2,12 +2,18 @@
 import express from "express";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
+import User from "../models/User.js";
+
 import { generateTrackingCode } from "../utils/trackingCode.js";
+import { generateInvoicePdf } from "../utils/invoice.js";
+import { sendInvoiceEmail } from "../utils/email.js";
 import { requireAuth, requireManager } from "../middleware/auth.js";
 
 const router = express.Router();
 
-// CREATE ORDER (POST /api/orders)
+/**
+ * CREATE ORDER (POST /api/orders)
+ */
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { items, deliveryAddress } = req.body;
@@ -75,7 +81,6 @@ router.post("/", requireAuth, async (req, res) => {
           date: new Date(),
         },
       ],
-      // ⭐ isteğe bağlı adres
       deliveryAddress: deliveryAddress || "",
       isCompleted: false,
     });
@@ -86,6 +91,41 @@ router.post("/", requireAuth, async (req, res) => {
       totalAmount: newOrder.totalAmount,
       user: req.user.id,
     });
+
+    // 6) Kullanıcı bilgisini çek (fatura ve mail için)
+    let userDoc = null;
+    try {
+      userDoc = await User.findById(req.user.id).lean();
+    } catch (e) {
+      console.error("Could not load user for invoice:", e);
+    }
+
+    const targetEmail =
+      userDoc?.email || req.user.email || req.body.email || null;
+
+    // 7) Fatura PDF üret + e-posta ile gönder
+    try {
+      const { pdfPath } = await generateInvoicePdf({
+        order: newOrder,
+        user: userDoc || {},
+      });
+
+      if (targetEmail) {
+        await sendInvoiceEmail({
+          to: targetEmail,
+          pdfPath,
+        });
+        console.log("Invoice email sent to:", targetEmail);
+      } else {
+        console.warn(
+          "No email address found for invoice; skipping email sending."
+        );
+      }
+    } catch (invoiceErr) {
+      // ÖNEMLİ: Burada hata olsa bile sipariş başarılı kalsın,
+      // sadece log atalım. Böylece sen "sipariş oluşmadı" problemi yaşamazsın.
+      console.error("INVOICE / EMAIL ERROR (order created, mail failed):", invoiceErr);
+    }
 
     return res.status(201).json({
       message: "Order created successfully.",
@@ -125,7 +165,6 @@ router.get("/my", requireAuth, async (req, res) => {
  * body: { status: "Processing" | "In-transit" | "Delivered" }
  * -> sadece manager
  */
-// UPDATE STATUS (PUT /api/orders/:id/status)
 router.put("/:id/status", requireManager, async (req, res) => {
   try {
     const { status } = req.body;
@@ -163,7 +202,6 @@ router.put("/:id/status", requireManager, async (req, res) => {
   }
 });
 
-
 /**
  * TRACK ORDER (GET /api/orders/track/:trackingCode)
  */
@@ -192,6 +230,7 @@ router.get("/track/:trackingCode", async (req, res) => {
       .json({ message: "Server error while retrieving tracking info." });
   }
 });
+
 /**
  * GET /api/orders/admin/deliveries
  * -> product manager / delivery department view
@@ -229,6 +268,7 @@ router.get("/admin/deliveries", requireManager, async (_req, res) => {
       .json({ message: "Error while fetching delivery list." });
   }
 });
+
 /**
  * GET /api/orders/admin/invoices
  * -> invoices view for product manager
@@ -260,6 +300,5 @@ router.get("/admin/invoices", requireManager, async (_req, res) => {
       .json({ message: "Error while fetching invoices." });
   }
 });
-
 
 export default router;
