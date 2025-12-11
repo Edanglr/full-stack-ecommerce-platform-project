@@ -28,7 +28,7 @@ function CategoryPage() {
   const [error, setError] = useState("");
   const [ratingSummary, setRatingSummary] = useState({}); // {productId: {averageRating, ratingCount}}
 
-  // ÜRÜNLERİ ÇEK (kategoriye göre, sıralamayı frontend yapacağız)
+  // ÜRÜNLERİ ÇEK
   useEffect(() => {
     const fetchProducts = async () => {
       try {
@@ -41,12 +41,13 @@ function CategoryPage() {
           params.append("category", categoryName);
         }
 
-        const queryString = params.toString();
-        const url = queryString
-          ? `http://localhost:5050/api/products?${queryString}`
-          : `http://localhost:5050/api/products`;
+        if (sortBy) {
+          params.append("sortBy", sortBy);
+        }
 
-        const res = await fetch(url);
+        const res = await fetch(
+          `http://localhost:5050/api/products?${params.toString()}`
+        );
 
         if (!res.ok) {
           throw new Error("Failed to fetch products");
@@ -63,7 +64,7 @@ function CategoryPage() {
     };
 
     fetchProducts();
-  }, [categoryName]); // sortBy yok → sıralamayı frontend’te yapacağız
+  }, [categoryName, sortBy]);
 
   // HER ÜRÜN İÇİN RATING ÖZETİNİ ÇEK
   useEffect(() => {
@@ -108,35 +109,6 @@ function CategoryPage() {
       setRatingSummary({});
     }
   }, [products]);
-
-  // KATEGORİ İÇİN FRONTEND SIRALAMA (ProductGrid ile aynı mantık)
-  const sortedProducts = [...products].sort((a, b) => {
-    switch (sortBy) {
-      case "priceAsc":
-        return (a.price || 0) - (b.price || 0);
-      case "priceDesc":
-        return (b.price || 0) - (a.price || 0);
-      case "popularity": {
-        const aSummary = ratingSummary[a._id] || {};
-        const bSummary = ratingSummary[b._id] || {};
-
-        const aScore =
-          (aSummary.averageRating || a.averageRating || 0) *
-          (aSummary.ratingCount || a.ratingCount || 0);
-        const bScore =
-          (bSummary.averageRating || b.averageRating || 0) *
-          (bSummary.ratingCount || b.ratingCount || 0);
-
-        return bScore - aScore;
-      }
-      case "newest":
-      default: {
-        const aDate = a.createdAt ? new Date(a.createdAt) : 0;
-        const bDate = b.createdAt ? new Date(b.createdAt) : 0;
-        return bDate - aDate;
-      }
-    }
-  });
 
   const handleCardClick = (productId) => {
     navigate(`/product/${productId}`);
@@ -197,7 +169,7 @@ function CategoryPage() {
       )}
 
       <Row>
-        {sortedProducts.map((product) => {
+        {products.map((product) => {
           const totalStock = getTotalStock(product);
 
           const summary = ratingSummary[product._id] || {};
@@ -264,7 +236,7 @@ function CategoryPage() {
           );
         })}
 
-        {!loading && sortedProducts.length === 0 && (
+        {!loading && products.length === 0 && (
           <p className="text-center mt-4">
             No products found in this category.
           </p>

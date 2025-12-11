@@ -1,6 +1,5 @@
 // backend/server.js
-import "dotenv/config";            // .env dosyasını yükle
-
+import "dotenv/config";            // 🔹 .env'i yükle (TEK SATIR, BAŞTA)
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";

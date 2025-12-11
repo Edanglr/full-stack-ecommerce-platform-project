@@ -5,13 +5,7 @@ import "./App.css";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { CartProvider } from "./context/CartContext";
 
-// Arkadaşının ekledikleri
-import PaymentMethodsPage from "./components/PaymentMethodsPage";
-import ReturnsPage from "./components/ReturnsPage";
-import SettingsPage from "./components/SettingsPage";
-import FavoritesPage from "./components/FavoritePage";
-
-import ProfilePage from "./components/ProfilePage";
+import ProfilePage from "./components/ProfilePage"; 
 import TrackingPage from "./components/TrackingPage";
 import SiteHeader from "./components/SiteHeader";
 import HeroVideo from "./components/HeroVideo";
@@ -23,13 +17,6 @@ import CartPage from "./components/CartPage";
 import ProductDetail from "./components/ProductDetail";
 import AdminCommentsPage from "./components/AdminCommentsPage";
 import OrderHistoryPage from "./components/OrderHistoryPage";
-
-// ✅ Admin sayfaları
-import AdminProductManagerPage from "./components/AdminProductManagerPage";
-import AdminOrdersPage from "./components/AdminOrdersPage";
-
-// Senin eklediğin InvoicePage
-import InvoicePage from "./components/InvoicePage";
 
 // Ana sayfa bileşeni: video + ürün grid
 function HomePage({ searchTerm }) {
@@ -85,7 +72,6 @@ function App() {
           />
 
           <Routes>
-            {/* Ana akış */}
             <Route path="/" element={<HomePage searchTerm={searchTerm} />} />
             <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
             <Route path="/signup" element={<SignupPage />} />
@@ -94,26 +80,11 @@ function App() {
             <Route path="/cart" element={<CartPage />} />
             <Route path="/product/:id" element={<ProductDetail />} />
 
-            {/* Profil & kullanıcıyla ilgili sayfalar */}
+            {/* ⭐⭐ PROFIL SAYFASI BURADA EKLENDI ⭐⭐ */}
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/payment-methods" element={<PaymentMethodsPage />} />
-            <Route path="/returns" element={<ReturnsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/favorites" element={<FavoritesPage />} />
 
-            {/* Siparişler & admin */}
-            <Route path="/orders" element={<OrderHistoryPage />} />
             <Route path="/admin/comments" element={<AdminCommentsPage />} />
-
-            {/* ✅ Yeni admin panel route'ları */}
-            <Route
-              path="/admin/products"
-              element={<AdminProductManagerPage />}
-            />
-            <Route path="/admin/orders" element={<AdminOrdersPage />} />
-
-            {/* Invoice sayfası */}
-            <Route path="/invoice/:orderId" element={<InvoicePage />} />
+            <Route path="/orders" element={<OrderHistoryPage />} />
           </Routes>
         </div>
       </Router>

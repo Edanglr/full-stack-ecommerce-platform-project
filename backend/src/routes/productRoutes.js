@@ -1,11 +1,11 @@
+// backend/src/routes/productRoutes.js
 import { Router } from "express";
 import Product from "../models/Product.js";
 import Rating from "../models/Rating.js";
-import { requireManager } from "../middleware/auth.js";
 
 const router = Router();
 
-// GET all products
+// GET all products (optional category + sorting)
 router.get("/", async (req, res) => {
   try {
     const { category, sortBy } = req.query;
@@ -66,120 +66,6 @@ router.get("/:id", async (req, res) => {
   } catch (err) {
     console.error("GET /api/products/:id error:", err);
     return res.status(500).json({ message: "Error fetching product" });
-  }
-});
-
-/**
- * POST /api/products
- * Manager: yeni ürün ekleme
- */
-router.post("/", requireManager, async (req, res) => {
-  try {
-    const {
-      name,
-      description,
-      price,
-      category,
-      imageUrl,
-      stock,
-      sizes,
-
-      // ⭐ REQUIREMENT 9
-      model,
-      serialNumber,
-      warrantyStatus,
-      distributor,
-    } = req.body;
-
-    if (!name || !price || !category || !model || !serialNumber || !warrantyStatus || !distributor) {
-      return res.status(400).json({
-        message:
-          "name, price, category, model, serialNumber, warrantyStatus and distributor are required.",
-      });
-    }
-
-    const product = await Product.create({
-      name,
-      description: description || "",
-      price,
-      category,
-      imageUrl: imageUrl || "",
-      stock: stock ?? 0,
-      sizes: sizes || { XS: 0, S: 0, M: 0, L: 0, XL: 0 },
-
-      // ⭐ Requirement 9 fields
-      model,
-      serialNumber,
-      warrantyStatus,
-      distributor,
-    });
-
-    return res.status(201).json({
-      message: "Product created.",
-      product,
-    });
-  } catch (err) {
-    console.error("POST /api/products error:", err);
-    return res.status(500).json({ message: "Error while creating product." });
-  }
-});
-
-/**
- * PUT /api/products/:id
- * Manager update
- */
-router.put("/:id", requireManager, async (req, res) => {
-  try {
-    const {
-      name,
-      description,
-      price,
-      category,
-      imageUrl,
-      stock,
-      sizes,
-
-      model,
-      serialNumber,
-      warrantyStatus,
-      distributor,
-    } = req.body;
-
-    const product = await Product.findById(req.params.id);
-
-    if (!product) {
-      return res.status(404).json({ message: "Product not found." });
-    }
-
-    if (name !== undefined) product.name = name;
-    if (description !== undefined) product.description = description;
-    if (price !== undefined) product.price = price;
-    if (category !== undefined) product.category = category;
-    if (imageUrl !== undefined) product.imageUrl = imageUrl;
-    if (stock !== undefined) product.stock = stock;
-
-    if (sizes !== undefined) {
-      product.sizes = {
-        ...product.sizes.toObject?.() || product.sizes || {},
-        ...sizes,
-      };
-    }
-
-    // ⭐ Requirement 9 updates
-    if (model !== undefined) product.model = model;
-    if (serialNumber !== undefined) product.serialNumber = serialNumber;
-    if (warrantyStatus !== undefined) product.warrantyStatus = warrantyStatus;
-    if (distributor !== undefined) product.distributor = distributor;
-
-    await product.save();
-
-    return res.json({
-      message: "Product updated.",
-      product,
-    });
-  } catch (err) {
-    console.error("PUT /api/products/:id error:", err);
-    return res.status(500).json({ message: "Error while updating product." });
   }
 });
 
