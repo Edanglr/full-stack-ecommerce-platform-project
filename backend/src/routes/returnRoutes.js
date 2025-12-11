@@ -16,16 +16,13 @@ router.post("/request", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
-    // 🔸 Token'dan gelen user id (id veya _id olabilir)
-    const userId = req.user._id || req.user.id;
-
     // 1) Sipariş kullanıcının mı?
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    if (userId && order.user.toString() !== userId.toString()) {
+    if (order.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not authorized." });
     }
 
@@ -44,7 +41,7 @@ router.post("/request", requireAuth, async (req, res) => {
 
     // 3) Return kaydı oluştur
     const returnRequest = await ReturnRequest.create({
-      user: userId,
+      user: req.user._id,
       order: orderId,
       product: productId,
       size: size || orderItem.size,
@@ -61,17 +58,19 @@ router.post("/request", requireAuth, async (req, res) => {
     order.shippingStatus = "Return requested";
     await order.save();
 
-    // 5) Ürünün stokunu geri ekle
-    const product = await Product.findById(productId);
-    if (product) {
+    // 5) Ürünün stokunu geri ekle (validation'a takılmadan)
+    try {
       const qty = quantity || orderItem.quantity;
       const sizeKey = orderItem.size;
 
-      if (product.sizes && product.sizes[sizeKey] !== undefined) {
-        product.sizes[sizeKey] += qty;
-      }
-
-      await product.save();
+      await Product.updateOne(
+        { _id: productId },
+        { $inc: { [`sizes.${sizeKey}`]: qty } },
+        { runValidators: false } // önemli: model/serialNumber/distributor eksikse bile patlama
+      );
+    } catch (stockErr) {
+      console.error("STOCK RESTORE ERROR (return OK, stock failed):", stockErr);
+      // Burada hata olsa bile return isteğini iptal etmiyoruz.
     }
 
     return res.status(201).json(returnRequest);
@@ -86,9 +85,7 @@ router.post("/request", requireAuth, async (req, res) => {
 // 🔹 GET /api/returns/my
 router.get("/my", requireAuth, async (req, res) => {
   try {
-    const userId = req.user._id || req.user.id;
-
-    const returns = await ReturnRequest.find({ user: userId })
+    const returns = await ReturnRequest.find({ user: req.user._id })
       .populate("product")
       .populate("order")
       .sort({ createdAt: -1 });
