@@ -9,11 +9,14 @@ function AdminOrdersPage() {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5050/api/orders/admin/deliveries", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetch(
+        "http://localhost:5050/api/orders/admin/deliveries",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       const data = await res.json();
       setDeliveries(data);
     } catch (err) {
@@ -31,14 +34,17 @@ function AdminOrdersPage() {
     try {
       setUpdatingId(orderId);
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5050/api/orders/${orderId}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const res = await fetch(
+        `http://localhost:5050/api/orders/${orderId}/status`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        }
+      );
 
       if (!res.ok) {
         const errData = await res.json();
@@ -60,7 +66,8 @@ function AdminOrdersPage() {
   }
 
   return (
-    <div style={{ padding: 20 }}>
+    {/* 🔥 Buraya da marginTop eklendi */}
+    <div style={{ padding: 20, marginTop: 120 }}>
       <h2>Delivery List (Product Manager)</h2>
       <p>
         Below is the delivery list with delivery ID, customer, product, quantity,
