@@ -2,18 +2,27 @@ import React, { useEffect, useState } from "react";
 
 function AdminProductManagerPage() {
   const [products, setProducts] = useState([]);
+
   const [form, setForm] = useState({
     name: "",
     description: "",
     price: "",
     category: "",
     imageUrl: "",
+
+    // REQUIREMENT 9
+    model: "",
+    serialNumber: "",
+    warrantyStatus: "",
+    distributor: "",
+
     XS: 0,
     S: 0,
     M: 0,
     L: 0,
     XL: 0,
   });
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -36,9 +45,10 @@ function AdminProductManagerPage() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
     setForm((prev) => ({
       ...prev,
-      [name]: name === "price" ? value : value,
+      [name]: value,
     }));
   };
 
@@ -51,9 +61,11 @@ function AdminProductManagerPage() {
 
   const handleCreateProduct = async (e) => {
     e.preventDefault();
+
     try {
       setSaving(true);
       const token = localStorage.getItem("token");
+
       const res = await fetch("http://localhost:5050/api/products", {
         method: "POST",
         headers: {
@@ -66,6 +78,13 @@ function AdminProductManagerPage() {
           price: Number(form.price),
           category: form.category,
           imageUrl: form.imageUrl,
+
+          // REQUIREMENT 9 fields
+          model: form.model,
+          serialNumber: form.serialNumber,
+          warrantyStatus: form.warrantyStatus,
+          distributor: form.distributor,
+
           sizes: {
             XS: form.XS,
             S: form.S,
@@ -77,18 +96,24 @@ function AdminProductManagerPage() {
       });
 
       const data = await res.json();
+
       if (!res.ok) {
         alert(data.message || "Error creating product");
         return;
       }
 
-      // formu sıfırla
+      // Reset form
       setForm({
         name: "",
         description: "",
         price: "",
         category: "",
         imageUrl: "",
+        model: "",
+        serialNumber: "",
+        warrantyStatus: "",
+        distributor: "",
+
         XS: 0,
         S: 0,
         M: 0,
@@ -99,14 +124,15 @@ function AdminProductManagerPage() {
       await fetchProducts();
     } catch (err) {
       console.error("Create product error:", err);
-      alert("Unexpected error while creating product.");
+      alert("Unexpected error.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeleteProduct = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this product?")) return;
+    if (!window.confirm("Are you sure?")) return;
+
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`http://localhost:5050/api/products/${id}`, {
@@ -125,84 +151,73 @@ function AdminProductManagerPage() {
       await fetchProducts();
     } catch (err) {
       console.error("Delete product error:", err);
-      alert("Unexpected error while deleting product.");
+      alert("Unexpected error.");
     }
   };
 
-  if (loading) {
-    return <p style={{ padding: 20 }}>Loading products...</p>;
-  }
+  if (loading) return <p>Loading products...</p>;
 
   return (
     <div style={{ padding: 20 }}>
-      <h2>Product Management (Product Manager)</h2>
+      <h2>Product Manager Panel</h2>
 
-      {/* Yeni ürün formu */}
+      {/* ADD PRODUCT FORM */}
       <h3>Add New Product</h3>
-      <form onSubmit={handleCreateProduct} style={{ marginBottom: 30 }}>
-        <div style={fieldRow}>
-          <label style={label}>Name</label>
-          <input
-            type="text"
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-            required
-            style={input}
-          />
-        </div>
-        <div style={fieldRow}>
-          <label style={label}>Description</label>
-          <textarea
-            name="description"
-            value={form.description}
-            onChange={handleChange}
-            style={textarea}
-          />
-        </div>
-        <div style={fieldRow}>
-          <label style={label}>Price (TL)</label>
-          <input
-            type="number"
-            name="price"
-            value={form.price}
-            onChange={handleChange}
-            required
-            style={input}
-          />
-        </div>
-        <div style={fieldRow}>
-          <label style={label}>Category</label>
-          <input
-            type="text"
-            name="category"
-            value={form.category}
-            onChange={handleChange}
-            required
-            style={input}
-          />
-        </div>
-        <div style={fieldRow}>
-          <label style={label}>Image URL</label>
-          <input
-            type="text"
-            name="imageUrl"
-            value={form.imageUrl}
-            onChange={handleChange}
-            style={input}
-          />
-        </div>
 
+      <form onSubmit={handleCreateProduct} style={{ marginBottom: 30 }}>
+        {/* NAME */}
+        <Field label="Name">
+          <input type="text" name="name" value={form.name} onChange={handleChange} required />
+        </Field>
+
+        {/* DESCRIPTION */}
+        <Field label="Description">
+          <textarea name="description" value={form.description} onChange={handleChange} />
+        </Field>
+
+        {/* PRICE */}
+        <Field label="Price (TL)">
+          <input type="number" name="price" value={form.price} onChange={handleChange} required />
+        </Field>
+
+        {/* CATEGORY */}
+        <Field label="Category">
+          <input type="text" name="category" value={form.category} onChange={handleChange} required />
+        </Field>
+
+        {/* IMAGE URL */}
+        <Field label="Image URL">
+          <input type="text" name="imageUrl" value={form.imageUrl} onChange={handleChange} />
+        </Field>
+
+        {/* REQUIREMENT 9 FIELDS */}
+        <Field label="Model">
+          <input type="text" name="model" value={form.model} onChange={handleChange} required />
+        </Field>
+
+        <Field label="Serial Number">
+          <input type="text" name="serialNumber" value={form.serialNumber} onChange={handleChange} required />
+        </Field>
+
+        <Field label="Warranty Status">
+          <input type="text" name="warrantyStatus" value={form.warrantyStatus} onChange={handleChange} required />
+        </Field>
+
+        <Field label="Distributor">
+          <input type="text" name="distributor" value={form.distributor} onChange={handleChange} required />
+        </Field>
+
+        {/* SIZES */}
         <h4>Initial Stock per Size</h4>
-        <div style={fieldRow}>
+        <div style={{ display: "flex", gap: 10 }}>
           {["XS", "S", "M", "L", "XL"].map((size) => (
-            <div key={size} style={{ marginRight: 10 }}>
+            <div key={size}>
               <label>{size}</label>
               <input
                 type="number"
                 value={form[size]}
                 onChange={(e) => handleStockChange(size, e.target.value)}
-                style={{ width: 60, marginLeft: 5 }}
+                style={{ width: 60 }}
               />
             </div>
           ))}
@@ -213,39 +228,35 @@ function AdminProductManagerPage() {
         </button>
       </form>
 
-      {/* Ürün listesi */}
+      {/* EXISTING PRODUCTS */}
       <h3>Existing Products</h3>
-      {products.length === 0 && <p>No products yet.</p>}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
         {products.map((p) => (
-          <div
-            key={p._id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: 8,
-              padding: 10,
-              width: 250,
-            }}
-          >
+          <div key={p._id} style={{ border: "1px solid #ccc", padding: 10, width: 250 }}>
             <img
               src={p.imageUrl || "https://via.placeholder.com/250x200?text=No+Image"}
               alt={p.name}
               style={{ width: "100%", height: 200, objectFit: "cover" }}
-              onError={(e) => {
-                e.target.src =
-                  "https://via.placeholder.com/250x200?text=No+Image";
-              }}
             />
+
             <h4>{p.name}</h4>
             <p>{p.price} TL</p>
             <p>Category: {p.category}</p>
+
+            {/* Requirement 9 fields shown */}
+            <p>Model: {p.model}</p>
+            <p>Serial: {p.serialNumber}</p>
+            <p>Warranty: {p.warrantyStatus}</p>
+            <p>Distributor: {p.distributor}</p>
+
             <p>
               Sizes:{" "}
               {["XS", "S", "M", "L", "XL"]
                 .map((s) => `${s}: ${(p.sizes && p.sizes[s]) || 0}`)
                 .join(" | ")}
             </p>
+
             <button onClick={() => handleDeleteProduct(p._id)}>Delete</button>
           </div>
         ))}
@@ -254,9 +265,13 @@ function AdminProductManagerPage() {
   );
 }
 
-const fieldRow = { marginBottom: 10, display: "flex", flexDirection: "column" };
-const label = { fontWeight: "bold", marginBottom: 4 };
-const input = { padding: 6 };
-const textarea = { padding: 6, minHeight: 60 };
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label style={{ fontWeight: "bold" }}>{label}</label>
+      <div>{children}</div>
+    </div>
+  );
+}
 
 export default AdminProductManagerPage;
