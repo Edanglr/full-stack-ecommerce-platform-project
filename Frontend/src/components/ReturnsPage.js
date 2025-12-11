@@ -7,6 +7,23 @@ function ReturnsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const fetchExtraData = async (ret) => {
+    try {
+      const [orderRes, productRes] = await Promise.all([
+        fetch(`http://localhost:5050/api/orders/${ret.orderId}`),
+        fetch(`http://localhost:5050/api/products/${ret.productId}`)
+      ]);
+
+      const order = orderRes.ok ? await orderRes.json() : null;
+      const product = productRes.ok ? await productRes.json() : null;
+
+      return { ...ret, order, product };
+    } catch (err) {
+      console.error("EXTRA FETCH ERROR", err);
+      return ret;
+    }
+  };
+
   useEffect(() => {
     const fetchReturns = async () => {
       try {
@@ -26,7 +43,13 @@ function ReturnsPage() {
         }
 
         const data = await res.json();
-        setReturnsList(data || []);
+
+        // 🔥 Burada backend’in dönmediği order/product bilgilerini biz çekiyoruz
+        const withDetails = await Promise.all(
+          (data || []).map((ret) => fetchExtraData(ret))
+        );
+
+        setReturnsList(withDetails);
       } catch (err) {
         console.error("RETURNS FETCH ERROR:", err);
         setError("Unexpected error while loading return requests.");
@@ -50,13 +73,6 @@ function ReturnsPage() {
     <ProfileLayout>
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
         <h2>My Returns</h2>
-
-        {error && returnsList.length > 0 && (
-            <p style={{ color: "red", fontWeight: "500", marginBottom: "15px" }}>
-                {error}
-            </p>
-        )}
-
 
         {returnsList.length === 0 && (
           <p>You have not requested any returns yet.</p>
@@ -98,11 +114,12 @@ function ReturnsPage() {
             </p>
 
             <p>
-              <strong>Order ID:</strong> {ret.order?._id}
+              <strong>Order ID:</strong> {ret.order?._id || ret.orderId}
             </p>
 
             <p>
-              <strong>Product:</strong> {ret.product?.name}
+              <strong>Product:</strong>{" "}
+              {ret.product?.name || "Product not found"}
             </p>
 
             <p>
