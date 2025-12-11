@@ -158,7 +158,8 @@ function AdminProductManagerPage() {
   if (loading) return <p>Loading products...</p>;
 
   return (
-    <div style={{ padding: 20 }}>
+    {/* 🔥 Sadece buraya marginTop eklendi */}
+    <div style={{ padding: 20, marginTop: 120 }}>
       <h2>Product Manager Panel</h2>
 
       {/* ADD PRODUCT FORM */}
@@ -167,44 +168,95 @@ function AdminProductManagerPage() {
       <form onSubmit={handleCreateProduct} style={{ marginBottom: 30 }}>
         {/* NAME */}
         <Field label="Name">
-          <input type="text" name="name" value={form.name} onChange={handleChange} required />
+          <input
+            type="text"
+            name="name"
+            value={form.name}
+            onChange={handleChange}
+            required
+          />
         </Field>
 
         {/* DESCRIPTION */}
         <Field label="Description">
-          <textarea name="description" value={form.description} onChange={handleChange} />
+          <textarea
+            name="description"
+            value={form.description}
+            onChange={handleChange}
+          />
         </Field>
 
         {/* PRICE */}
         <Field label="Price (TL)">
-          <input type="number" name="price" value={form.price} onChange={handleChange} required />
+          <input
+            type="number"
+            name="price"
+            value={form.price}
+            onChange={handleChange}
+            required
+          />
         </Field>
 
         {/* CATEGORY */}
         <Field label="Category">
-          <input type="text" name="category" value={form.category} onChange={handleChange} required />
+          <input
+            type="text"
+            name="category"
+            value={form.category}
+            onChange={handleChange}
+            required
+          />
         </Field>
 
         {/* IMAGE URL */}
         <Field label="Image URL">
-          <input type="text" name="imageUrl" value={form.imageUrl} onChange={handleChange} />
+          <input
+            type="text"
+            name="imageUrl"
+            value={form.imageUrl}
+            onChange={handleChange}
+          />
         </Field>
 
         {/* REQUIREMENT 9 FIELDS */}
         <Field label="Model">
-          <input type="text" name="model" value={form.model} onChange={handleChange} required />
+          <input
+            type="text"
+            name="model"
+            value={form.model}
+            onChange={handleChange}
+            required
+          />
         </Field>
 
         <Field label="Serial Number">
-          <input type="text" name="serialNumber" value={form.serialNumber} onChange={handleChange} required />
+          <input
+            type="text"
+            name="serialNumber"
+            value={form.serialNumber}
+            onChange={handleChange}
+            required
+          />
         </Field>
 
         <Field label="Warranty Status">
-          <input type="text" name="warrantyStatus" value={form.warrantyStatus} onChange={handleChange} required />
+          <input
+            type="text"
+            name="warrantyStatus"
+            value={form.warrantyStatus}
+            onChange={handleChange}
+            required
+          />
         </Field>
 
         <Field label="Distributor">
-          <input type="text" name="distributor" value={form.distributor} onChange={handleChange} required />
+          <input
+            type="text"
+            name="distributor"
+            value={form.distributor}
+            onChange={handleChange}
+            required
+          />
         </Field>
 
         {/* SIZES */}
@@ -233,9 +285,15 @@ function AdminProductManagerPage() {
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
         {products.map((p) => (
-          <div key={p._id} style={{ border: "1px solid #ccc", padding: 10, width: 250 }}>
+          <div
+            key={p._id}
+            style={{ border: "1px solid #ccc", padding: 10, width: 250 }}
+          >
             <img
-              src={p.imageUrl || "https://via.placeholder.com/250x200?text=No+Image"}
+              src={
+                p.imageUrl ||
+                "https://via.placeholder.com/250x200?text=No+Image"
+              }
               alt={p.name}
               style={{ width: "100%", height: 200, objectFit: "cover" }}
             />
