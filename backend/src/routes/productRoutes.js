@@ -1,12 +1,11 @@
-// backend/src/routes/productRoutes.js
 import { Router } from "express";
 import Product from "../models/Product.js";
 import Rating from "../models/Rating.js";
-import { requireManager } from "../middleware/auth.js"; 
+import { requireManager } from "../middleware/auth.js";
 
 const router = Router();
 
-// GET all products (optional category + sorting)
+// GET all products
 router.get("/", async (req, res) => {
   try {
     const { category, sortBy } = req.query;
@@ -72,7 +71,7 @@ router.get("/:id", async (req, res) => {
 
 /**
  * POST /api/products
- * -> sadece manager: yeni ürün ekleme
+ * Manager: yeni ürün ekleme
  */
 router.post("/", requireManager, async (req, res) => {
   try {
@@ -84,12 +83,19 @@ router.post("/", requireManager, async (req, res) => {
       imageUrl,
       stock,
       sizes,
+
+      // ⭐ REQUIREMENT 9
+      model,
+      serialNumber,
+      warrantyStatus,
+      distributor,
     } = req.body;
 
-    if (!name || !price || !category) {
-      return res
-        .status(400)
-        .json({ message: "name, price and category are required." });
+    if (!name || !price || !category || !model || !serialNumber || !warrantyStatus || !distributor) {
+      return res.status(400).json({
+        message:
+          "name, price, category, model, serialNumber, warrantyStatus and distributor are required.",
+      });
     }
 
     const product = await Product.create({
@@ -100,6 +106,12 @@ router.post("/", requireManager, async (req, res) => {
       imageUrl: imageUrl || "",
       stock: stock ?? 0,
       sizes: sizes || { XS: 0, S: 0, M: 0, L: 0, XL: 0 },
+
+      // ⭐ Requirement 9 fields
+      model,
+      serialNumber,
+      warrantyStatus,
+      distributor,
     });
 
     return res.status(201).json({
@@ -114,7 +126,7 @@ router.post("/", requireManager, async (req, res) => {
 
 /**
  * PUT /api/products/:id
- * -> sadece manager: ürün bilgisi ve stok güncelleme
+ * Manager update
  */
 router.put("/:id", requireManager, async (req, res) => {
   try {
@@ -126,9 +138,15 @@ router.put("/:id", requireManager, async (req, res) => {
       imageUrl,
       stock,
       sizes,
+
+      model,
+      serialNumber,
+      warrantyStatus,
+      distributor,
     } = req.body;
 
     const product = await Product.findById(req.params.id);
+
     if (!product) {
       return res.status(404).json({ message: "Product not found." });
     }
@@ -139,12 +157,19 @@ router.put("/:id", requireManager, async (req, res) => {
     if (category !== undefined) product.category = category;
     if (imageUrl !== undefined) product.imageUrl = imageUrl;
     if (stock !== undefined) product.stock = stock;
+
     if (sizes !== undefined) {
       product.sizes = {
         ...product.sizes.toObject?.() || product.sizes || {},
         ...sizes,
       };
     }
+
+    // ⭐ Requirement 9 updates
+    if (model !== undefined) product.model = model;
+    if (serialNumber !== undefined) product.serialNumber = serialNumber;
+    if (warrantyStatus !== undefined) product.warrantyStatus = warrantyStatus;
+    if (distributor !== undefined) product.distributor = distributor;
 
     await product.save();
 
@@ -155,24 +180,6 @@ router.put("/:id", requireManager, async (req, res) => {
   } catch (err) {
     console.error("PUT /api/products/:id error:", err);
     return res.status(500).json({ message: "Error while updating product." });
-  }
-});
-
-/**
- * DELETE /api/products/:id
- * -> sadece manager: ürün silme
- */
-router.delete("/:id", requireManager, async (req, res) => {
-  try {
-    const product = await Product.findByIdAndDelete(req.params.id);
-    if (!product) {
-      return res.status(404).json({ message: "Product not found." });
-    }
-
-    return res.json({ message: "Product deleted." });
-  } catch (err) {
-    console.error("DELETE /api/products/:id error:", err);
-    return res.status(500).json({ message: "Error while deleting product." });
   }
 });
 
