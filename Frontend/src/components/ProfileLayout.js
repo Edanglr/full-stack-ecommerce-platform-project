@@ -10,9 +10,11 @@ function ProfileLayout({ children }) {
     <div className="profile-page">
       {/* LEFT SIDEBAR */}
       <div className="profile-sidebar">
-        <button onClick={() => navigate("/orders")}>Orders</button>
-        <button onClick={() => navigate("/returns")}>Returns</button>
-        <button onClick={() => navigate("/payment-methods")}>Payment Methods</button>
+        <button onClick={() => navigate("/orders")}>My Orders</button>
+        <button onClick={() => navigate("/returns")}>My Returns</button>
+        <button onClick={() => navigate("/payment-methods")}>
+          Payment Methods
+        </button>
         <button onClick={() => navigate("/profile")}>Profile</button>
         <button onClick={() => navigate("/settings")}>Settings</button>
         <button onClick={() => navigate("/favorites")}>Favorites</button>
