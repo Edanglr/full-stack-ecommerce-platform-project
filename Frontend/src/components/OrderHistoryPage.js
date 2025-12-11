@@ -42,6 +42,66 @@ function OrderHistoryPage() {
     fetchOrders();
   }, []);
 
+  // ⭐ Return request butonunun gerçekten backend'e istek attığı fonksiyon
+  const handleReturnRequest = async (order, item) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("You must be logged in to request a return.");
+      return;
+    }
+
+    // Backend reason zorunlu, boş kalmasın diye default veriyorum
+    let reason =
+      window.prompt(
+        "Reason for return (required):",
+        "Requested by customer"
+      ) || "Requested by customer";
+
+    // İptale basarsa hiç bir şey yapma
+    if (reason === null) return;
+
+    // Order içindeki productId, populate yüzünden obje olabilir
+    const productId =
+      (item.productId && (item.productId._id || item.productId)) || null;
+
+    if (!productId) {
+      alert("Could not determine product ID for this item.");
+      return;
+    }
+
+    try {
+      const res = await fetch("http://localhost:5050/api/returns/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          orderId: order._id,
+          productId,
+          size: item.size,
+          quantity: item.quantity,
+          reason,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        console.error("RETURN REQUEST ERROR:", data);
+        alert(data.message || "Error while creating return request.");
+        return;
+      }
+
+      alert("Return request created successfully.");
+      // İstersen direkt My Returns sayfasına götürelim:
+      window.location.href = "/returns";
+    } catch (err) {
+      console.error("RETURN REQUEST ERROR:", err);
+      alert("Unexpected error while creating return request.");
+    }
+  };
+
   if (loading) {
     return (
       <ProfileLayout>
@@ -180,9 +240,7 @@ function OrderHistoryPage() {
 
                   {/* Return Button – sağ alt köşe */}
                   <button
-                    onClick={() =>
-                      alert("Return request for: " + item.name)
-                    }
+                    onClick={() => handleReturnRequest(order, item)}
                     style={{
                       position: "absolute",
                       right: "10px",
