@@ -7,23 +7,6 @@ function ReturnsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const fetchExtraData = async (ret) => {
-    try {
-      const [orderRes, productRes] = await Promise.all([
-        fetch(`http://localhost:5050/api/orders/${ret.orderId}`),
-        fetch(`http://localhost:5050/api/products/${ret.productId}`)
-      ]);
-
-      const order = orderRes.ok ? await orderRes.json() : null;
-      const product = productRes.ok ? await productRes.json() : null;
-
-      return { ...ret, order, product };
-    } catch (err) {
-      console.error("EXTRA FETCH ERROR", err);
-      return ret;
-    }
-  };
-
   useEffect(() => {
     const fetchReturns = async () => {
       try {
@@ -43,13 +26,7 @@ function ReturnsPage() {
         }
 
         const data = await res.json();
-
-        // 🔥 Burada backend’in dönmediği order/product bilgilerini biz çekiyoruz
-        const withDetails = await Promise.all(
-          (data || []).map((ret) => fetchExtraData(ret))
-        );
-
-        setReturnsList(withDetails);
+        setReturnsList(data || []);
       } catch (err) {
         console.error("RETURNS FETCH ERROR:", err);
         setError("Unexpected error while loading return requests.");
@@ -74,7 +51,15 @@ function ReturnsPage() {
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
         <h2>My Returns</h2>
 
-        {returnsList.length === 0 && (
+        {error && (
+          <p
+            style={{ color: "red", fontWeight: "500", marginBottom: "15px" }}
+          >
+            {error}
+          </p>
+        )}
+
+        {returnsList.length === 0 && !error && (
           <p>You have not requested any returns yet.</p>
         )}
 
@@ -114,12 +99,12 @@ function ReturnsPage() {
             </p>
 
             <p>
-              <strong>Order ID:</strong> {ret.order?._id || ret.orderId}
+              <strong>Order ID:</strong>{" "}
+              {ret.order?._id || ret.orderId || "N/A"}
             </p>
 
             <p>
-              <strong>Product:</strong>{" "}
-              {ret.product?.name || "Product not found"}
+              <strong>Product:</strong> {ret.product?.name || "N/A"}
             </p>
 
             <p>
@@ -132,7 +117,9 @@ function ReturnsPage() {
 
             <p>
               <strong>Date:</strong>{" "}
-              {new Date(ret.createdAt).toLocaleString()}
+              {ret.createdAt
+                ? new Date(ret.createdAt).toLocaleString()
+                : "-"}
             </p>
           </div>
         ))}
