@@ -1,11 +1,9 @@
 // src/components/ProfilePage.js
 import React, { useEffect, useState } from "react";
 import "./ProfilePage.css";
-import { useNavigate } from "react-router-dom";
+import ProfileLayout from "./ProfileLayout";
 
 function ProfilePage() {
-  const navigate = useNavigate();
-
   const [profile, setProfile] = useState({
     name: "",
     email: "",
@@ -17,7 +15,6 @@ function ProfilePage() {
 
   const token = localStorage.getItem("token");
 
-  // Fetch profile data
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -67,88 +64,44 @@ function ProfilePage() {
   };
 
   return (
-    <div className="profile-page">
-      
-      {/* LEFT SIDEBAR */}
-      <div className="profile-sidebar">
-        <button onClick={() => navigate("/orders")}>Orders</button>
-        <button>Returns</button>
-        <button>Payment Methods</button>
+    <ProfileLayout>
+      <h1 className="profile-name">{profile.name}</h1>
 
-        <button className="active">Profile</button>
-
-        <button>Settings</button>
-        <button>Favorites</button>
-
-        <button
-          className="logout-btn"
-          onClick={() => {
-            localStorage.clear();
-            navigate("/");
-            window.location.reload();
-          }}
-        >
-          Log Out
-        </button>
+      <div className="profile-section">
+        <label>Email Address</label>
+        <p>{profile.email}</p>
       </div>
 
-      {/* RIGHT PROFILE CONTENT */}
-      <div className="profile-content">
-        <h1 className="profile-name">{profile.name || "User"}</h1>
-
-        {/* FIXED EMAIL DISPLAY */}
-        <div className="profile-section">
-          <label>Email Address</label>
-          <p>{profile.email}</p>
-        </div>
-
-        <div className="profile-section">
-          <label>Phone</label>
-          <input
-            name="phone"
-            value={profile.phone}
-            onChange={handleChange}
-            placeholder="Phone"
-          />
-        </div>
-
-        <div className="profile-section">
-          <label>Address</label>
-          <input
-            name="address"
-            value={profile.address}
-            onChange={handleChange}
-            placeholder="Address"
-          />
-        </div>
-
-        <div className="profile-row">
-          <div className="profile-section">
-            <label>City</label>
-            <input
-              name="city"
-              value={profile.city}
-              onChange={handleChange}
-              placeholder="City"
-            />
-          </div>
-
-          <div className="profile-section">
-            <label>Postal Code</label>
-            <input
-              name="postalCode"
-              value={profile.postalCode}
-              onChange={handleChange}
-              placeholder="Postal Code"
-            />
-          </div>
-        </div>
-
-        <button className="save-btn" onClick={handleSave}>
-          Save Changes
-        </button>
+      <div className="profile-section">
+        <label>Phone</label>
+        <input name="phone" value={profile.phone} onChange={handleChange} />
       </div>
-    </div>
+
+      <div className="profile-section">
+        <label>Address</label>
+        <input name="address" value={profile.address} onChange={handleChange} />
+      </div>
+
+      <div className="profile-row">
+        <div className="profile-section">
+          <label>City</label>
+          <input name="city" value={profile.city} onChange={handleChange} />
+        </div>
+
+        <div className="profile-section">
+          <label>Postal Code</label>
+          <input
+            name="postalCode"
+            value={profile.postalCode}
+            onChange={handleChange}
+          />
+        </div>
+      </div>
+
+      <button className="save-btn" onClick={handleSave}>
+        Save Changes
+      </button>
+    </ProfileLayout>
   );
 }
 
