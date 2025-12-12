@@ -1,6 +1,6 @@
 
 import { render, screen, waitFor } from "@testing-library/react";
-import ProductGrid from "../src/components/ProductGrid";
+import ProductGrid from "../components/ProductGrid";
 import { BrowserRouter } from "react-router-dom";
 
 beforeEach(() => {
