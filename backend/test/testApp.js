@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 
-// routes
 import authRoutes from "../src/routes/auth.js";
 import productRoutes from "../src/routes/productRoutes.js";
 import ratingRoutes from "../src/routes/ratingRoutes.js";
@@ -13,7 +12,7 @@ import userRoutes from "../src/routes/userRoutes.js";
 import adminProductRoutes from "../src/routes/adminProductRoutes.js";
 import adminOrderRoutes from "../src/routes/adminOrderRoutes.js";
 
-export const createTestApp = () => {
+export function createTestApp() {
   const app = express();
 
   app.use(cors({ origin: true, credentials: true }));
@@ -34,4 +33,4 @@ export const createTestApp = () => {
   app.get("/health", (_req, res) => res.json({ ok: true }));
 
   return app;
-};
+}
