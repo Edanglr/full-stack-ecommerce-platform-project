@@ -1,6 +1,6 @@
 
 import { render, screen } from "@testing-library/react";
-import LoginPage from "../src/components/LoginPage";
+import LoginPage from "../components/LoginPage";
 import { BrowserRouter } from "react-router-dom";
 
 test("LoginPage renders email and password fields", () => {
