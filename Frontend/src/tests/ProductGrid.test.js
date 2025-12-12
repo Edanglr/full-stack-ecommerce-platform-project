@@ -1,5 +1,4 @@
-
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import ProductGrid from "../components/ProductGrid";
 import { BrowserRouter } from "react-router-dom";
 
@@ -37,11 +36,11 @@ test("ProductGrid renders and displays products", async () => {
     </BrowserRouter>
   );
 
-  // Ürünler ekrana geliyor mu?
+  // Ürün isimleri
   expect(await screen.findByText("Product 1")).toBeInTheDocument();
   expect(screen.getByText("Product 2")).toBeInTheDocument();
 
-  // Fiyatlar doğru mu?
+  // Fiyatlar
   expect(screen.getByText("100 TL")).toBeInTheDocument();
   expect(screen.getByText("150 TL")).toBeInTheDocument();
 });
@@ -76,7 +75,8 @@ test("ProductGrid shows error message when fetching products fails", async () =>
     </BrowserRouter>
   );
 
+  // 🔴 UI'daki gerçek mesaj
   expect(
-    await screen.findByText(/error/i)
+    await screen.findByText(/Failed to fetch products/i)
   ).toBeInTheDocument();
 });
