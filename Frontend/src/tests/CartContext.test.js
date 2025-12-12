@@ -1,6 +1,6 @@
 
 import { renderHook, act } from "@testing-library/react";
-import { CartProvider, useCart } from "../src/context/CartContext";
+import { CartProvider, useCart } from "../context/CartContext";
 
 test("addToCart adds new item to cart", () => {
   const wrapper = ({ children }) => <CartProvider>{children}</CartProvider>;
