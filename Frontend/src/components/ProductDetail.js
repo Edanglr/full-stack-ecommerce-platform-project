@@ -23,8 +23,10 @@ function ProductDetail() {
 
   const { addToCart } = useCart();
 
-  
   const [isFavorite, setIsFavorite] = useState(false);
+
+  // ✅ Toggle: show all sizes' stock (click on status)
+  const [showStockBreakdown, setShowStockBreakdown] = useState(false);
 
   useEffect(() => {
     const loadFavoriteStatus = async () => {
@@ -48,7 +50,6 @@ function ProductDetail() {
     loadFavoriteStatus();
   }, [id]);
 
-
   const toggleFavorite = async () => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -56,8 +57,7 @@ function ProductDetail() {
       return;
     }
 
-    const previousFavoriteState = isFavorite; 
-    
+    const previousFavoriteState = isFavorite;
 
     setIsFavorite(!isFavorite);
 
@@ -72,8 +72,10 @@ function ProductDetail() {
       });
 
       if (!res.ok) {
-        setIsFavorite(previousFavoriteState); 
-        const errorData = await res.json().catch(() => ({ message: "Unknown error" }));
+        setIsFavorite(previousFavoriteState);
+        const errorData = await res
+          .json()
+          .catch(() => ({ message: "Unknown error" }));
         console.error("Favorite toggle failed:", errorData);
         alert(`Failed to complete action: ${errorData.message || res.statusText}`);
         return;
@@ -81,16 +83,12 @@ function ProductDetail() {
 
       const data = await res.json();
       console.log("Favorite API Response (Success):", data);
-
-     
-      
     } catch (err) {
-      setIsFavorite(previousFavoriteState); 
+      setIsFavorite(previousFavoriteState);
       console.error("Favorite toggle network error:", err);
       alert("Network error: Could not connect to the server.");
     }
   };
-
 
   useEffect(() => {
     const fetchProductAndComments = async () => {
@@ -99,22 +97,25 @@ function ProductDetail() {
 
         if (!res.ok) {
           console.error("Product fetch error. Status:", res.status);
-          setProduct(null); 
+          setProduct(null);
           return;
         }
 
         const data = await res.json();
-        const productData = data.product || data; 
-        
-        if (!productData || typeof productData !== 'object' || !productData._id) {
-             console.error("Invalid or missing product data received:", data);
-             setProduct(null);
-             return;
+        const productData = data.product || data;
+
+        if (
+          !productData ||
+          typeof productData !== "object" ||
+          !productData._id
+        ) {
+          console.error("Invalid or missing product data received:", data);
+          setProduct(null);
+          return;
         }
 
         setProduct(productData);
-        setComments(data.comments || []); 
-
+        setComments(data.comments || []);
       } catch (err) {
         console.error("Product fetch network or parsing error:", err);
         setProduct(null);
@@ -150,10 +151,7 @@ function ProductDetail() {
   const sizes = ["XS", "S", "M", "L", "XL"];
   const sizeStocks = product.sizes || {};
 
-  const totalStock = sizes.reduce(
-    (sum, s) => sum + (sizeStocks[s] || 0),
-    0
-  );
+  const totalStock = sizes.reduce((sum, s) => sum + (sizeStocks[s] || 0), 0);
 
   const selectedSizeStock =
     selectedSize && sizeStocks ? sizeStocks[selectedSize] ?? 0 : 0;
@@ -167,7 +165,9 @@ function ProductDetail() {
     if (quantity < selectedSizeStock) {
       setQuantity((q) => q + 1);
     } else {
-      alert(`Only ${selectedSizeStock} pieces available for size ${selectedSize}.`);
+      alert(
+        `Only ${selectedSizeStock} pieces available for size ${selectedSize}.`
+      );
     }
   };
 
@@ -291,7 +291,6 @@ function ProductDetail() {
       setUserRating(0);
       setHoverRating(0);
 
-      // Eğer backend yeni yorum listesini de döndürüyorsa, burada güncelleyebilirsin:
       if (data.comments) {
         setComments(data.comments);
       }
@@ -327,7 +326,6 @@ function ProductDetail() {
         </div>
 
         <div className="pd-right">
-
           {/* ⭐ Ürün adı + Favori kalp */}
           <div className="pd-title-row">
             <h1 className="pd-title">{product.name}</h1>
@@ -361,6 +359,7 @@ function ProductDetail() {
             onChange={(e) => {
               setSelectedSize(e.target.value);
               setQuantity(1);
+              setShowStockBreakdown(false);
             }}
           >
             <option value="">Choose size</option>
@@ -371,12 +370,42 @@ function ProductDetail() {
             ))}
           </select>
 
+          {/* ✅ Stock (old line back) + click breakdown */}
           {selectedSize && (
             <>
-              <p className="pd-stock">{sizeStatus}</p>
+              <p
+                className="pd-stock"
+                onClick={() => setShowStockBreakdown((v) => !v)}
+                style={{ cursor: "pointer" }}
+                title="Click to show stock by size"
+              >
+                {sizeStatus} (click)
+              </p>
+
+              {/* ✅ Old behavior restored */}
               <p style={{ marginTop: "6px", fontSize: "0.9rem" }}>
                 Stock for size {selectedSize}: {selectedSizeStock}
               </p>
+
+              {/* Optional breakdown */}
+              {showStockBreakdown && (
+                <div style={{ marginTop: "6px", fontSize: "0.9rem" }}>
+                  {sizes.map((s) => (
+                    <div
+                      key={s}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "4px 0",
+                        borderBottom: "1px dashed #e6e6e6",
+                      }}
+                    >
+                      <span>{s}</span>
+                      <span>{sizeStocks[s] || 0}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
@@ -398,6 +427,68 @@ function ProductDetail() {
 
           <h3 className="pd-info-title">Product Information</h3>
           <p className="pd-info">{product.description}</p>
+
+          {/* ✅ Requirement 9 fields (NO extra stock here) */}
+          <div style={{ marginTop: "12px", fontSize: "0.95rem" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0",
+                borderBottom: "1px dashed #e6e6e6",
+              }}
+            >
+              <b>ID</b>
+              <span>{product._id}</span>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0",
+                borderBottom: "1px dashed #e6e6e6",
+              }}
+            >
+              <b>Model</b>
+              <span>{product.model || "-"}</span>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0",
+                borderBottom: "1px dashed #e6e6e6",
+              }}
+            >
+              <b>Serial Number</b>
+              <span>{product.serialNumber || "-"}</span>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0",
+                borderBottom: "1px dashed #e6e6e6",
+              }}
+            >
+              <b>Warranty Status</b>
+              <span>{product.warrantyStatus || "-"}</span>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0",
+              }}
+            >
+              <b>Distributor</b>
+              <span>{product.distributor || "-"}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -477,9 +568,7 @@ function ProductDetail() {
         {comments.map((c) => (
           <div key={c._id} className="comment-card">
             <strong>{c.userId?.name || c.userId?.email || "User"}</strong>
-            <div className="comment-stars">
-              {renderAverageStars(c.score)}
-            </div>
+            <div className="comment-stars">{renderAverageStars(c.score)}</div>
             <p>{c.comment}</p>
             {c.createdAt && (
               <span className="comment-date">
