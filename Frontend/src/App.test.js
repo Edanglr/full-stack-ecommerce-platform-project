@@ -1,8 +1,12 @@
-import { render, screen } from '@testing-library/react';
-import App from './App';
+import { render, screen } from "@testing-library/react";
+import App from "./App";
 
-test('renders learn react link', () => {
+test("renders navbar brand", () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getByText(/La Strada/i)).toBeInTheDocument();
+});
+
+test("renders All Products heading", () => {
+  render(<App />);
+  expect(screen.getByText(/All Products/i)).toBeInTheDocument();
 });
