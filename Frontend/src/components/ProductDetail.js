@@ -58,8 +58,7 @@ function ProductDetail() {
     }
 
     const previousFavoriteState = isFavorite;
-
-    setIsFavorite(!isFavorite);
+    setIsFavorite(!isFavorite); // optimistic UI
 
     try {
       const res = await fetch("http://localhost:5050/api/favorites/toggle", {
@@ -71,24 +70,30 @@ function ProductDetail() {
         body: JSON.stringify({ productId: id }),
       });
 
+      let data = null;
+      try {
+        data = await res.json(); // ✅ SADECE 1 KEZ
+      } catch {
+        data = {};
+      }
+
       if (!res.ok) {
         setIsFavorite(previousFavoriteState);
-        const errorData = await res
-          .json()
-          .catch(() => ({ message: "Unknown error" }));
-        console.error("Favorite toggle failed:", errorData);
-        alert(`Failed to complete action: ${errorData.message || res.statusText}`);
+        alert(data.message || "Failed to complete action");
         return;
       }
 
-      const data = await res.json();
-      console.log("Favorite API Response (Success):", data);
+      // backend true/false dönüyorsa senkronla
+      if (typeof data.favorite === "boolean") {
+        setIsFavorite(data.favorite);
+      }
     } catch (err) {
       setIsFavorite(previousFavoriteState);
       console.error("Favorite toggle network error:", err);
       alert("Network error: Could not connect to the server.");
     }
   };
+
 
   useEffect(() => {
     const fetchProductAndComments = async () => {

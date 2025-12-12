@@ -72,7 +72,7 @@ function OrderHistoryPage() {
         return;
       }
 
-      const res = await fetch("http://localhost:5050/api/returns/request", {
+      const res = await fetch("http://localhost:5050/api/returns", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

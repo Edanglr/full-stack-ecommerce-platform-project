@@ -10,7 +10,9 @@ import orderRoutes from "./src/routes/orderRoutes.js";
 import authRoutes from "./src/routes/auth.js";
 import productRoutes from "./src/routes/productRoutes.js";
 import ratingRoutes from "./src/routes/ratingRoutes.js";
-import userRoutes from "./src/routes/userRoutes.js"; // profil
+import userRoutes from "./src/routes/userRoutes.js"; 
+import favoriteRoutes from "./src/routes/favoriteRoutes.js";
+import returnRoutes from "./src/routes/returnRoutes.js"
 
 const app = express();
 const PORT = process.env.PORT || 5050;
@@ -37,7 +39,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/ratings", ratingRoutes);
-app.use("/api/users", userRoutes); // profil
+app.use("/api/users", userRoutes);
+app.use("/api/favorites", favoriteRoutes); 
+app.use("/api/returns", returnRoutes);
 
 const start = async () => {
   try {
