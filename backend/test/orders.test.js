@@ -1,29 +1,51 @@
+// backend/test/orders.test.js
+import { jest } from "@jest/globals";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 
 import Product from "../src/models/Product.js";
 import Order from "../src/models/Order.js";
 
-import { createTestApp } from "./testApp.js";
-const app = createTestApp();
-
-// Mock utils used inside orderRoutes
+// ✅ Mock utils used inside orderRoutes (must be BEFORE importing modules that use them)
 jest.unstable_mockModule("../src/utils/mockBank.js", () => ({
-  mockBankCharge: async ({ amount }) => (amount > 0 ? { success: true, transactionId: "T1", authCode: "OK00001" } : { success: false }),
+  mockBankCharge: async ({ amount }) =>
+    amount > 0
+      ? { success: true, transactionId: "T1", authCode: "OK00001" }
+      : { success: false },
 }));
+
 jest.unstable_mockModule("../src/utils/invoice.js", () => ({
-  generateInvoicePdf: async () => ({ invoiceNumber: "INV-TEST-1", pdfPath: "/tmp/inv.pdf" }),
+  generateInvoicePdf: async () => ({
+    invoiceNumber: "INV-TEST-1",
+    pdfPath: "/tmp/inv.pdf",
+  }),
 }));
+
 jest.unstable_mockModule("../src/utils/email.js", () => ({
   sendInvoiceEmail: async () => true,
 }));
 
 function tokenCustomer(userId = "507f1f77bcf86cd799439020") {
-  return jwt.sign({ id: userId, email: "c@test.com", role: "customer", name: "C" }, process.env.JWT_SECRET);
+  return jwt.sign(
+    { id: userId, email: "c@test.com", role: "customer", name: "C" },
+    process.env.JWT_SECRET
+  );
 }
+
 function tokenManager() {
-  return jwt.sign({ id: "507f1f77bcf86cd799439021", email: "m@test.com", role: "manager", name: "M" }, process.env.JWT_SECRET);
+  return jwt.sign(
+    { id: "507f1f77bcf86cd799439021", email: "m@test.com", role: "manager", name: "M" },
+    process.env.JWT_SECRET
+  );
 }
+
+let app;
+
+// ✅ important: import testApp AFTER mocks
+beforeAll(async () => {
+  const mod = await import("./testApp.js");
+  app = mod.createTestApp();
+});
 
 describe("ORDERS", () => {
   test("25) POST /api/orders -> 400 if no items", async () => {
