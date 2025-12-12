@@ -1,8 +1,8 @@
 
 import { render, screen } from "@testing-library/react";
-import ProductDetail from "../src/components/ProductDetail";
+import ProductDetail from "../components/ProductDetail";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { CartProvider } from "../src/context/CartContext";
+import { CartProvider } from "../context/CartContext";
 
 beforeEach(() => {
   global.fetch = jest.fn(() =>
