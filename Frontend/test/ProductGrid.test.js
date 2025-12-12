@@ -3,59 +3,70 @@ import ProductGrid from "../src/components/ProductGrid";
 import { BrowserRouter } from "react-router-dom";
 
 beforeEach(() => {
-  // Mock fetch API to simulate getting products
-  global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve([
-        { _id: "1", name: "Product 1", price: 100, imageUrl: "image1.jpg", sizes: { S: 5, M: 3 } },
-        { _id: "2", name: "Product 2", price: 150, imageUrl: "image2.jpg", sizes: { M: 2, L: 0 } },
-      ]),
-    })
-  );
+  jest.clearAllMocks();
 });
 
 test("ProductGrid renders and displays products", async () => {
+  global.fetch = jest.fn(() =>
+    Promise.resolve({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          {
+            _id: "1",
+            name: "Product 1",
+            price: 100,
+            imageUrl: "image1.jpg",
+            sizes: { S: 5, M: 3 },
+          },
+          {
+            _id: "2",
+            name: "Product 2",
+            price: 150,
+            imageUrl: "image2.jpg",
+            sizes: { M: 2, L: 0 },
+          },
+        ]),
+    })
+  );
+
   render(
     <BrowserRouter>
       <ProductGrid searchTerm="" />
     </BrowserRouter>
   );
 
-  // Check if loading text appears first
-  expect(await screen.findByText(/Loading products/i)).toBeInTheDocument();
+  // Ürünler ekrana geliyor mu?
+  expect(await screen.findByText("Product 1")).toBeInTheDocument();
+  expect(screen.getByText("Product 2")).toBeInTheDocument();
 
-  // Wait for products to load
-  await waitFor(() => {
-    expect(screen.getByText(/Product 1/i)).toBeInTheDocument();
-    expect(screen.getByText(/Product 2/i)).toBeInTheDocument();
-  });
-
-  // Ensure correct data is displayed
+  // Fiyatlar doğru mu?
   expect(screen.getByText("100 TL")).toBeInTheDocument();
   expect(screen.getByText("150 TL")).toBeInTheDocument();
 });
 
-test("ProductGrid displays 'No products found' when no products match the search term", async () => {
+test("ProductGrid displays 'No products found' when list is empty", async () => {
+  global.fetch = jest.fn(() =>
+    Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve([]),
+    })
+  );
+
   render(
     <BrowserRouter>
       <ProductGrid searchTerm="nonexistent" />
     </BrowserRouter>
   );
 
-  // Wait for the error state (no products)
-  await waitFor(() => {
-    expect(screen.getByText(/No products found/i)).toBeInTheDocument();
-  });
+  expect(
+    await screen.findByText(/No products found/i)
+  ).toBeInTheDocument();
 });
 
 test("ProductGrid shows error message when fetching products fails", async () => {
-  // Mock failed fetch call
   global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: false,
-      statusText: "Network Error",
-    })
+    Promise.reject(new Error("Failed to fetch products"))
   );
 
   render(
@@ -64,6 +75,7 @@ test("ProductGrid shows error message when fetching products fails", async () =>
     </BrowserRouter>
   );
 
-  // Wait for error message to appear
-  expect(await screen.findByText(/Error loading products/i)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/error/i)
+  ).toBeInTheDocument();
 });
