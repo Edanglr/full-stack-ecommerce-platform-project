@@ -1,5 +1,5 @@
 export default {
   testEnvironment: "node",
-  testMatch: ["**/tests/**/*.test.js"],
-  setupFilesAfterEnv: ["<rootDir>/tests/setup.js"],
+  testMatch: ["**/test/**/*.test.js"],
+  setupFilesAfterEnv: ["<rootDir>/test/setup.js"],
 };
