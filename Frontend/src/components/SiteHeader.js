@@ -102,10 +102,16 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
             
 
             {/* MANAGER: COMMENT PANEL */}
-
             {user && user.role === "manager" && (
               <Nav.Link as={Link} to="/admin/comments" className="ms-3">
                 Comment Panel
+              </Nav.Link>
+            )}
+
+            {/* MANAGER: LIVE SUPPORT */}
+            {user && user.role === "manager" && (
+              <Nav.Link as={Link} to="/admin/chats" className="ms-3">
+                Live Support
               </Nav.Link>
             )}
 

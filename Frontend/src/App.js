@@ -26,13 +26,17 @@ import ProductDetail from "./components/ProductDetail";
 import AdminCommentsPage from "./components/AdminCommentsPage";
 import OrderHistoryPage from "./components/OrderHistoryPage";
 
+
+import AdminLiveChatPage from "./components/AdminLiveChatPage";
 import AdminProductManagerPage from "./components/AdminProductManagerPage";
 import AdminOrdersPage from "./components/AdminOrdersPage";
 
 import InvoicePage from "./components/InvoicePage";
 import PaymentPage from "./components/PaymentPage";
 
-// buraya kadar sadece IMPORTLAR GELİR
+// 🔴 LIVE CHAT
+import CustomerChat from "./components/chat/CustomerChat";
+
 console.log("APP ROUTES LOADED!");
 
 
@@ -81,6 +85,8 @@ function App() {
     <CartProvider>
       <Router>
         <div className="App">
+
+          {/* HEADER */}
           <SiteHeader
             user={user}
             onLogout={handleLogout}
@@ -88,6 +94,7 @@ function App() {
             setSearchTerm={setSearchTerm}
           />
 
+          {/* ROUTES */}
           <Routes>
             <Route path="/" element={<HomePage searchTerm={searchTerm} />} />
             <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
@@ -102,7 +109,7 @@ function App() {
             <Route path="/returns" element={<ReturnsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/favorites" element={<FavoritesPage />} />
-
+            <Route path="/admin/chats" element={<AdminLiveChatPage user={user} />}/>
             <Route path="/orders" element={<OrderHistoryPage />} />
             <Route path="/admin/comments" element={<AdminCommentsPage />} />
 
@@ -112,6 +119,10 @@ function App() {
             <Route path="/invoice/:orderId" element={<InvoicePage />} />
             <Route path="/payment" element={<PaymentPage />} />
           </Routes>
+
+          {/* 🔴 GLOBAL LIVE CHAT (sadece login olmuş kullanıcı) */}
+          {user && <CustomerChat user={user} />}
+
         </div>
       </Router>
     </CartProvider>

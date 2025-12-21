@@ -12,20 +12,6 @@ import { sendInvoiceEmail } from "../utils/email.js";
 
 const router = express.Router();
 
-/**
- * POST /api/orders
- * -> Sadece login kullanıcı
- *
- * Özellikler:
- *  - Stok kontrolü (ürün + beden)
- *  - Stok düşme
- *  - Mock bank üzerinden ödeme
- *  - paymentStatus, paymentDetails
- *  - trackingCode
- *  - deliveryAddress, isCompleted
- *  - Invoice PDF üretimi + e-posta gönderimi
- *  - Response içinde invoice objesi
- */
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { items, deliveryAddress } = req.body;
