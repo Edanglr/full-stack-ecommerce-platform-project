@@ -2,10 +2,13 @@ import express from "express";
 import { requireAuth, requireManager } from "../middleware/auth.js";
 import Chat from "../models/Chat.js"; 
 import User from "../models/User.js";
-
+import Order from "../models/Order.js"; // Sipariş geçmişi için gerekli
 
 const router = express.Router();
 
+/**
+ * Admin Panel: Tüm aktif sohbetleri listele
+ */
 router.get("/admin", requireAuth, requireManager, async (_req, res) => {
   try {
     const chats = await Chat.find({})
@@ -15,7 +18,7 @@ router.get("/admin", requireAuth, requireManager, async (_req, res) => {
     const userIds = chats.map((c) => c.customerId);
 
     const users = await User.find({ _id: { $in: userIds } })
-      .select("_id name email")
+      .select("_id name email phone address") 
       .lean();
 
     const userMap = {};
@@ -24,15 +27,12 @@ router.get("/admin", requireAuth, requireManager, async (_req, res) => {
     });
 
     const result = chats.map((c) => {
-      // ✅ LOG'LAR BURAYA
-      console.log("CHAT customerId:", c.customerId);
-      console.log("USER MAP KEYS:", Object.keys(userMap));
-
+      const user = userMap[c.customerId.toString()];
       return {
         chatId: c.chatId,
         customerId: c.customerId.toString(),
-        customerName:
-          userMap[c.customerId.toString()]?.name || "Unknown User",
+        customerName: user?.name || "Unknown User",
+        customerEmail: user?.email,
         lastMessageAt: c.lastMessageAt,
         lastText: c.messages?.length
           ? c.messages[c.messages.length - 1].text
@@ -42,15 +42,43 @@ router.get("/admin", requireAuth, requireManager, async (_req, res) => {
 
     res.json(result);
   } catch (err) {
-    console.error(err);
+    console.error("Admin chat list error:", err);
     res.status(500).json({ message: "Failed to fetch chats" });
   }
 });
 
+// backend/src/routes/chatRouter.js
+
+// Sağ panel detaylarını getiren endpoint
+router.get("/user-details/:customerId", requireAuth, requireManager, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    // Kullanıcı bilgilerini bul
+    const user = await User.findById(customerId).select("-password").lean();
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Sipariş geçmişini bul
+    // ÖNEMLİ: Modelinizdeki kullanıcıyı tutan alan 'user' mı yoksa 'customerId' mi? Kontrol edin.
+    const orders = await Order.find({ user: customerId })
+      .sort({ createdAt: -1 })
+      .limit(10) 
+      .lean();
+
+    // Frontend bu objeyi (user ve orders) bekliyor
+    res.json({
+      user,
+      orders: orders || []
+    });
+  } catch (err) {
+    console.error("User details error:", err);
+    res.status(500).json({ message: "Error fetching user details" });
+  }
+});
 
 
 /**
- * Customer / Admin: bir chat’in mesajlarını getir
+ * Belirli bir chat'in mesaj geçmişini getir
  */
 router.get("/:chatId", requireAuth, async (req, res) => {
   try {
@@ -63,7 +91,7 @@ router.get("/:chatId", requireAuth, async (req, res) => {
 
     res.json({ chatId, messages: chat.messages || [] });
   } catch (err) {
-    console.error(err);
+    console.error("Fetch messages error:", err);
     res.status(500).json({ message: "Failed to fetch messages" });
   }
 });

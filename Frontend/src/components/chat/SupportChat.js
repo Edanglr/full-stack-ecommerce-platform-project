@@ -49,10 +49,12 @@ function SupportChat({ supportUser, chatId, customerName }) {
   const handleSend = () => {
     if (!text.trim()) return;
 
+    // Support kullanıcısının ismiyle mesaj gönderiyoruz
     sendMessage({
       chatId,
       senderId: supportUser._id || supportUser.id,
       senderRole: "support",
+      senderName: supportUser.name || "Support", // Admin ismi Socket'e iletiliyor
       text,
     });
 
@@ -61,11 +63,11 @@ function SupportChat({ supportUser, chatId, customerName }) {
 
   return (
     <div style={styles.container}>
-      <h3>Live Support</h3>
+      <h3 style={{ margin: "0 0 10px 0" }}>Live Support</h3>
 
       {customerName && (
         <div style={styles.customerInfo}>
-          customer: <b>{customerName}</b>
+          Chatting with: <b>{customerName}</b>
         </div>
       )}
 
@@ -81,9 +83,19 @@ function SupportChat({ supportUser, chatId, customerName }) {
                   : "flex-start",
               background:
                 m.senderRole === "support" ? "#d1ecf1" : "#f1f1f1",
+              textAlign: "left"
             }}
           >
-            <b>{m.senderRole}:</b> {m.text}
+            {/* ✅ "customer:" sorununu çözen mantık:
+                Eğer senderName varsa (Eda Nur Güler gibi) onu basar, 
+                yoksa role bilgisini (support/customer) basar. */}
+            <div style={styles.senderLabel}>
+              {m.senderRole === "support" 
+                ? (m.senderName || "Support") 
+                : (m.senderName || "Customer")}
+            </div>
+            
+            <div>{m.text}</div>
           </div>
         ))}
       </div>
@@ -98,7 +110,7 @@ function SupportChat({ supportUser, chatId, customerName }) {
             if (e.key === "Enter") handleSend();
           }}
         />
-        <button onClick={handleSend}>Send</button>
+        <button onClick={handleSend} style={styles.sendButton}>Send</button>
       </div>
     </div>
   );
@@ -110,39 +122,63 @@ const styles = {
     height: "100%",
     border: "1px solid #ccc",
     borderRadius: 8,
-    padding: 10,
+    padding: 15,
     display: "flex",
     flexDirection: "column",
+    backgroundColor: "#fff",
   },
   customerInfo: {
     fontSize: 14,
     color: "#666",
-    marginBottom: 8,
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottom: "1px solid #eee"
   },
   messages: {
     flex: 1,
     overflowY: "auto",
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: 10,
     marginBottom: 10,
+    paddingRight: 5
   },
   message: {
-    padding: "6px 10px",
-    borderRadius: 8,
+    padding: "8px 12px",
+    borderRadius: 12,
     maxWidth: "80%",
     fontSize: "14px",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.1)"
+  },
+  senderLabel: {
+    fontSize: "11px",
+    fontWeight: "bold",
+    marginBottom: "3px",
+    color: "#333",
+    display: "block"
   },
   inputRow: {
     display: "flex",
-    gap: 6,
+    gap: 8,
+    paddingTop: 10,
+    borderTop: "1px solid #eee"
   },
   input: {
     flex: 1,
-    padding: "6px 8px",
-    borderRadius: 6,
-    border: "1px solid #ccc",
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid #ddd",
+    outline: "none"
   },
+  sendButton: {
+    padding: "0 20px",
+    backgroundColor: "#007bff",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontWeight: "bold"
+  }
 };
 
 export default SupportChat;
