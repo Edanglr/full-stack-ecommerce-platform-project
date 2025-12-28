@@ -6,9 +6,7 @@ import Order from "../models/Order.js"; // Sipariş geçmişi için gerekli
 
 const router = express.Router();
 
-/**
- * Admin Panel: Tüm aktif sohbetleri listele
- */
+
 router.get("/admin", requireAuth, requireManager, async (_req, res) => {
   try {
     const chats = await Chat.find({})
@@ -47,9 +45,6 @@ router.get("/admin", requireAuth, requireManager, async (_req, res) => {
   }
 });
 
-// backend/src/routes/chatRouter.js
-
-// Sağ panel detaylarını getiren endpoint
 router.get("/user-details/:customerId", requireAuth, requireManager, async (req, res) => {
   try {
     const { customerId } = req.params;
@@ -58,14 +53,11 @@ router.get("/user-details/:customerId", requireAuth, requireManager, async (req,
     const user = await User.findById(customerId).select("-password").lean();
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Sipariş geçmişini bul
-    // ÖNEMLİ: Modelinizdeki kullanıcıyı tutan alan 'user' mı yoksa 'customerId' mi? Kontrol edin.
     const orders = await Order.find({ user: customerId })
       .sort({ createdAt: -1 })
       .limit(10) 
       .lean();
 
-    // Frontend bu objeyi (user ve orders) bekliyor
     res.json({
       user,
       orders: orders || []
@@ -77,15 +69,15 @@ router.get("/user-details/:customerId", requireAuth, requireManager, async (req,
 });
 
 
-/**
- * Belirli bir chat'in mesaj geçmişini getir
- */
-router.get("/:chatId", requireAuth, async (req, res) => {
+router.get("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
 
+    // MongoDB'de chatId alanı (string) üzerinden arama yapıyoruz
     const chat = await Chat.findOne({ chatId }).lean();
+    
     if (!chat) {
+      // Chat yoksa boş array dön
       return res.json({ chatId, messages: [] });
     }
 
@@ -93,6 +85,28 @@ router.get("/:chatId", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("Fetch messages error:", err);
     res.status(500).json({ message: "Failed to fetch messages" });
+  }
+});
+
+router.delete("/:chatId", async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    console.log(`🗑️ SİLME İSTEĞİ GELDİ: ${chatId}`); // Terminalde bunu görmelisin!
+
+    // ⚠️ ÖNEMLİ: findById KULLANMA! Custom 'chatId' alanına göre siliyoruz.
+    const deletedChat = await Chat.findOneAndDelete({ chatId: chatId });
+
+    if (!deletedChat) {
+      console.log("❌ Silinecek sohbet bulunamadı (Zaten silinmiş olabilir).");
+      return res.status(404).json({ message: "Chat not found" });
+    }
+
+    console.log("✅ Sohbet başarıyla silindi!");
+    res.status(200).json({ message: "Chat deleted successfully" });
+  } catch (err) {
+    console.error("❌ Chat delete error:", err);
+    res.status(500).json({ message: "Failed to delete chat" });
   }
 });
 

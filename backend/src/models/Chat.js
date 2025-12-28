@@ -8,12 +8,12 @@ const messageSchema = new mongoose.Schema(
     },
     senderRole: {
       type: String,
-      enum: ["customer", "support"],
-      required: true,
+      // ⚠️ DİKKAT: Enum'ı kaldırdım. "admin", "Admin", "support" gelirse hata vermesin diye.
+      required: true, 
     },
     senderName: {
       type: String,
-      required: true, // ⭐ EKLENDİ
+      default: "User", // Eğer isim boş gelirse hata vermek yerine "User" yazsın.
     },
     text: {
       type: String,
@@ -33,7 +33,7 @@ const chatSchema = new mongoose.Schema(
       type: String,
       unique: true,
       index: true,
-      required: true, // chat-<userId>
+      required: true,
     },
     customerId: {
       type: String,

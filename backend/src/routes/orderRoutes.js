@@ -185,31 +185,39 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-/**
- * GET /api/orders/my
- * -> Login kullanıcının tüm siparişleri (order history)
- */
 router.get("/my", requireAuth, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
-      .populate("items.productId")
+      .populate({
+        path: "items.productId",
+        select: "name image price",
+      })
       .sort({ createdAt: -1 })
       .lean();
 
-    return res.json(orders);
+    const formatted = orders.map(order => ({
+      _id: order._id,
+      orderCode: order._id.toString().slice(-6).toUpperCase(),
+      totalPrice: order.totalAmount,
+      status: order.shippingStatus,
+      createdAt: order.createdAt,
+      items: order.items.map(i => ({
+        name: i.productId?.name,
+        image: i.productId?.image,
+        price: i.price,
+        quantity: i.quantity,
+      }))
+    }));
+
+    res.json(formatted);
   } catch (err) {
-    console.error("GET /api/orders/my error:", err);
-    return res
-      .status(500)
-      .json({ message: "Error while fetching your orders." });
+    console.error(err);
+    res.status(500).json({ message: "Order fetch error" });
   }
 });
 
-/**
- * GET /api/orders/:id/invoice
- * -> Login kullanıcının bir siparişi için invoice detayları (JSON)
- *    (InvoicePage.js şu an JSON bekliyor, PDF değil.)
- */
+
+
 router.get("/:id/invoice", requireAuth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id).lean();
@@ -261,11 +269,7 @@ router.get("/:id/invoice", requireAuth, async (req, res) => {
   }
 });
 
-/**
- * PUT /api/orders/:id/status
- * body: { status: "Processing" | "In-transit" | "Delivered" }
- * -> Sadece manager
- */
+
 router.put("/:id/status", requireManager, async (req, res) => {
   try {
     const { status } = req.body;
@@ -303,9 +307,7 @@ router.put("/:id/status", requireManager, async (req, res) => {
   }
 });
 
-/**
- * GET /api/orders/track/:trackingCode
- */
+
 router.get("/track/:trackingCode", async (req, res) => {
   try {
     const { trackingCode } = req.params;
@@ -369,10 +371,7 @@ router.get("/admin/deliveries", requireManager, async (_req, res) => {
   }
 });
 
-/**
- * GET /api/orders/admin/invoices
- * -> invoices view for product manager
- */
+
 router.get("/admin/invoices", requireManager, async (_req, res) => {
   try {
     const orders = await Order.find({})
@@ -400,5 +399,44 @@ router.get("/admin/invoices", requireManager, async (_req, res) => {
       .json({ message: "Error while fetching invoices." });
   }
 });
+
+
+/**
+ * GET /api/orders/by-user/:userId
+ * -> Admin / Support: selected customer orders
+ */
+router.get("/by-user/:userId", requireManager, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const orders = await Order.find({ user: userId })
+      .populate({
+        path: "items.productId",
+        select: "name image price",
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formatted = orders.map(order => ({
+      _id: order._id,
+      orderCode: order._id.toString().slice(-6).toUpperCase(),
+      status: order.shippingStatus,
+      totalPrice: order.totalAmount,
+      createdAt: order.createdAt,
+      items: order.items.map(i => ({
+        name: i.productId?.name,
+        image: i.productId?.image,
+        price: i.price,
+        quantity: i.quantity,
+      }))
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error("GET /orders/by-user error:", err);
+    res.status(500).json({ message: "Cannot fetch customer orders." });
+  }
+});
+
 
 export default router;
