@@ -1,7 +1,8 @@
+// backend/src/routes/productRoutes.js
 import { Router } from "express";
 import Product from "../models/Product.js";
 import Rating from "../models/Rating.js";
-import { requireManager } from "../middleware/auth.js";
+import { requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -71,9 +72,9 @@ router.get("/:id", async (req, res) => {
 
 /**
  * POST /api/products
- * Manager: yeni ürün ekleme
+ * Product Manager: yeni ürün ekleme
  */
-router.post("/", requireManager, async (req, res) => {
+router.post("/", requireRole("productManager"), async (req, res) => {
   try {
     const {
       name,
@@ -84,14 +85,21 @@ router.post("/", requireManager, async (req, res) => {
       stock,
       sizes,
 
-      // ⭐ REQUIREMENT 9
       model,
       serialNumber,
       warrantyStatus,
       distributor,
     } = req.body;
 
-    if (!name || !price || !category || !model || !serialNumber || !warrantyStatus || !distributor) {
+    if (
+      !name ||
+      !price ||
+      !category ||
+      !model ||
+      !serialNumber ||
+      !warrantyStatus ||
+      !distributor
+    ) {
       return res.status(400).json({
         message:
           "name, price, category, model, serialNumber, warrantyStatus and distributor are required.",
@@ -107,7 +115,6 @@ router.post("/", requireManager, async (req, res) => {
       stock: stock ?? 0,
       sizes: sizes || { XS: 0, S: 0, M: 0, L: 0, XL: 0 },
 
-      // ⭐ Requirement 9 fields
       model,
       serialNumber,
       warrantyStatus,
@@ -126,9 +133,9 @@ router.post("/", requireManager, async (req, res) => {
 
 /**
  * PUT /api/products/:id
- * Manager update
+ * Product Manager update
  */
-router.put("/:id", requireManager, async (req, res) => {
+router.put("/:id", requireRole("productManager"), async (req, res) => {
   try {
     const {
       name,
@@ -160,12 +167,11 @@ router.put("/:id", requireManager, async (req, res) => {
 
     if (sizes !== undefined) {
       product.sizes = {
-        ...product.sizes.toObject?.() || product.sizes || {},
+        ...((product.sizes?.toObject?.() ? product.sizes.toObject() : product.sizes) || {}),
         ...sizes,
       };
     }
 
-    // ⭐ Requirement 9 updates
     if (model !== undefined) product.model = model;
     if (serialNumber !== undefined) product.serialNumber = serialNumber;
     if (warrantyStatus !== undefined) product.warrantyStatus = warrantyStatus;
