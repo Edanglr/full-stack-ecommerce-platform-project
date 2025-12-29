@@ -3,7 +3,7 @@ import { Router } from "express";
 import Rating from "../models/Rating.js";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
-import { requireAuth, requireManager } from "../middleware/auth.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -117,9 +117,9 @@ router.post("/", requireAuth, async (req, res) => {
 
 /**
  * GET /api/ratings/admin/all
- * -> tüm rating + yorumlar (manager)
+ * -> tüm rating + yorumlar (productManager)
  */
-router.get("/admin/all", requireManager, async (_req, res) => {
+router.get("/admin/all", requireRole("productManager"), async (_req, res) => {
   try {
     const ratings = await Rating.find({})
       .sort({ createdAt: -1 })
@@ -139,7 +139,7 @@ router.get("/admin/all", requireManager, async (_req, res) => {
  * PUT /api/ratings/approve/:id
  * body: { approve: true/false }
  */
-router.put("/approve/:id", requireManager, async (req, res) => {
+router.put("/approve/:id", requireRole("productManager"), async (req, res) => {
   try {
     const { approve } = req.body;
     const { id } = req.params;
