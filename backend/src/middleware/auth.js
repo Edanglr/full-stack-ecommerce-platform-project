@@ -1,56 +1,57 @@
-// backend/src/middleware/auth.js
 import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
-export const requireAuth = (req, res, next) => {
+// Token'ı cookie veya Authorization header'dan oku
+const getTokenFromReq = (req) => {
+  // cookie
+  if (req.cookies?.token) return req.cookies.token;
+
+  // bearer
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith("Bearer ")) return auth.slice(7);
+
+  return null;
+};
+
+export const requireAuth = async (req, res, next) => {
   try {
-    let token = null;
-
-    // 1) Authorization: Bearer xxx
-    const authHeader = req.headers.authorization || "";
-    if (authHeader.startsWith("Bearer ")) {
-      token = authHeader.slice(7);
-    }
-
-    // 2) Cookie'den
-    if (!token && req.cookies && req.cookies.token) {
-      token = req.cookies.token;
-    }
-
-    if (!token) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
+    const token = getTokenFromReq(req);
+    if (!token) return res.status(401).json({ message: "Unauthorized" });
 
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(payload.id).select("-passwordHash");
 
-    req.user = {
-      id: payload.id,
-      email: payload.email,
-      role: payload.role || "customer",
-      name: payload.name,
-    };
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-    return next();
-  } catch (err) {
-    console.error("requireAuth error:", err.message);
-    return res.status(401).json({ message: "Invalid or expired token" });
+    req.user = user;
+    next();
+  } catch (e) {
+    return res.status(401).json({ message: "Unauthorized" });
   }
 };
 
-export const requireManager = (req, res, next) => {
-  // requireAuth daha önce çalışmamışsa token'ı tekrar kontrol et
-  if (!req.user) {
-    return requireAuth(req, res, () => {
-      if (!req.user || req.user.role !== "manager") {
-        return res.status(403).json({ message: "Manager only" });
-      }
-      return next();
-    });
-  }
+// Eski "manager" rolünü legacy olarak kabul edip admin yetkisi gibi kullanacağız.
+const normalizeRole = (role) => role || "customer";
 
-  if (req.user.role !== "manager") {
-    return res.status(403).json({ message: "Manager only" });
-  }
+export const requireRole = (roles = []) => [
+  requireAuth,
+  (req, res, next) => {
+    const role = normalizeRole(req.user?.role);
 
-  return next();
-};
+    // legacy manager -> her admin işini yapabilsin (geriye uyumluluk)
+    if (role === "manager") return next();
 
+    if (!roles.includes(role)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    next();
+  },
+];
+
+// PDF rolleri
+export const requireSalesManager = requireRole(["salesManager"]);
+export const requireProductManager = requireRole(["productManager"]);
+export const requireSupportAgent = requireRole(["supportAgent"]);
+
+// Kodun eski yerleri kırılmasın diye (adminProductRoutes/adminOrderRoutes vs.)
+export const requireManager = requireRole(["salesManager", "productManager", "supportAgent"]);
