@@ -1,13 +1,13 @@
+// backend/src/routes/chatRoutes.js
 import express from "express";
-import { requireAuth, requireManager } from "../middleware/auth.js";
-import Chat from "../models/Chat.js"; 
+import { requireAuth, requireRole } from "../middleware/auth.js";
+import Chat from "../models/Chat.js";
 import User from "../models/User.js";
-import Order from "../models/Order.js"; // Sipariş geçmişi için gerekli
+import Order from "../models/Order.js";
 
 const router = express.Router();
 
-
-router.get("/admin", requireAuth, requireManager, async (_req, res) => {
+router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res) => {
   try {
     const chats = await Chat.find({})
       .sort({ lastMessageAt: -1 })
@@ -16,7 +16,7 @@ router.get("/admin", requireAuth, requireManager, async (_req, res) => {
     const userIds = chats.map((c) => c.customerId);
 
     const users = await User.find({ _id: { $in: userIds } })
-      .select("_id name email phone address") 
+      .select("_id name email phone address")
       .lean();
 
     const userMap = {};
@@ -45,39 +45,40 @@ router.get("/admin", requireAuth, requireManager, async (_req, res) => {
   }
 });
 
-router.get("/user-details/:customerId", requireAuth, requireManager, async (req, res) => {
-  try {
-    const { customerId } = req.params;
+router.get(
+  "/user-details/:customerId",
+  requireAuth,
+  requireRole("supportAgent"),
+  async (req, res) => {
+    try {
+      const { customerId } = req.params;
 
-    // Kullanıcı bilgilerini bul
-    const user = await User.findById(customerId).select("-password").lean();
-    if (!user) return res.status(404).json({ message: "User not found" });
+      const user = await User.findById(customerId).select("-password").lean();
+      if (!user) return res.status(404).json({ message: "User not found" });
 
-    const orders = await Order.find({ user: customerId })
-      .sort({ createdAt: -1 })
-      .limit(10) 
-      .lean();
+      const orders = await Order.find({ user: customerId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean();
 
-    res.json({
-      user,
-      orders: orders || []
-    });
-  } catch (err) {
-    console.error("User details error:", err);
-    res.status(500).json({ message: "Error fetching user details" });
+      res.json({
+        user,
+        orders: orders || [],
+      });
+    } catch (err) {
+      console.error("User details error:", err);
+      res.status(500).json({ message: "Error fetching user details" });
+    }
   }
-});
-
+);
 
 router.get("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
 
-    // MongoDB'de chatId alanı (string) üzerinden arama yapıyoruz
     const chat = await Chat.findOne({ chatId }).lean();
-    
+
     if (!chat) {
-      // Chat yoksa boş array dön
       return res.json({ chatId, messages: [] });
     }
 
@@ -88,13 +89,13 @@ router.get("/:chatId", async (req, res) => {
   }
 });
 
-router.delete("/:chatId", async (req, res) => {
+// ✅ Silme işlemi de supportAgent (ve manager legacy) olmalı
+router.delete("/:chatId", requireAuth, requireRole("supportAgent"), async (req, res) => {
   try {
     const { chatId } = req.params;
 
-    console.log(`🗑️ SİLME İSTEĞİ GELDİ: ${chatId}`); // Terminalde bunu görmelisin!
+    console.log(`🗑️ SİLME İSTEĞİ GELDİ: ${chatId}`);
 
-    // ⚠️ ÖNEMLİ: findById KULLANMA! Custom 'chatId' alanına göre siliyoruz.
     const deletedChat = await Chat.findOneAndDelete({ chatId: chatId });
 
     if (!deletedChat) {
