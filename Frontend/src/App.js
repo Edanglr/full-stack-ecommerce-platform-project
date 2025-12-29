@@ -1,10 +1,10 @@
-// APP.JS — BÜTÜN IMPORTLAR EN ÜSTE
+// frontend/src/App.js
 
 import React, { useState, useEffect } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./App.css";
 
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { CartProvider } from "./context/CartContext";
 
 // component imports
@@ -26,7 +26,6 @@ import ProductDetail from "./components/ProductDetail";
 import AdminCommentsPage from "./components/AdminCommentsPage";
 import OrderHistoryPage from "./components/OrderHistoryPage";
 
-
 import AdminLiveChatPage from "./components/AdminLiveChatPage";
 import AdminProductManagerPage from "./components/AdminProductManagerPage";
 import AdminOrdersPage from "./components/AdminOrdersPage";
@@ -39,9 +38,7 @@ import CustomerChat from "./components/chat/CustomerChat";
 
 console.log("APP ROUTES LOADED!");
 
-
 // ================= HomePage ==================
-
 function HomePage({ searchTerm }) {
   return (
     <>
@@ -51,9 +48,24 @@ function HomePage({ searchTerm }) {
   );
 }
 
+/**
+ * Route Guard:
+ * - user yoksa -> /login
+ * - role uymuyorsa -> / (home)
+ * - manager (legacy) her şeye girer
+ */
+function RequireRole({ user, roles, children }) {
+  if (!user) return <Navigate to="/login" replace />;
+
+  const role = user.role;
+  const allowed = roles.includes(role) || role === "manager"; // legacy super admin
+
+  if (!allowed) return <Navigate to="/" replace />;
+
+  return children;
+}
 
 // ==================== APP ====================
-
 function App() {
   const [user, setUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -85,7 +97,6 @@ function App() {
     <CartProvider>
       <Router>
         <div className="App">
-
           {/* HEADER */}
           <SiteHeader
             user={user}
@@ -104,17 +115,52 @@ function App() {
             <Route path="/cart" element={<CartPage />} />
             <Route path="/product/:id" element={<ProductDetail />} />
 
+            {/* Customer pages (login şart değil ama bazıları login ister, mevcut sistemin bozulmasın diye aynen bıraktım) */}
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/payment-methods" element={<PaymentMethodsPage />} />
             <Route path="/returns" element={<ReturnsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/favorites" element={<FavoritesPage />} />
-            <Route path="/admin/chats" element={<AdminLiveChatPage user={user} />}/>
             <Route path="/orders" element={<OrderHistoryPage />} />
-            <Route path="/admin/comments" element={<AdminCommentsPage />} />
 
-            <Route path="/admin/products" element={<AdminProductManagerPage />} />
-            <Route path="/admin/orders" element={<AdminOrdersPage />} />
+            {/* ADMIN: Support Agent */}
+            <Route
+              path="/admin/chats"
+              element={
+                <RequireRole user={user} roles={["supportAgent"]}>
+                  <AdminLiveChatPage user={user} />
+                </RequireRole>
+              }
+            />
+
+            {/* ADMIN: Product Manager */}
+            <Route
+              path="/admin/comments"
+              element={
+                <RequireRole user={user} roles={["productManager"]}>
+                  <AdminCommentsPage />
+                </RequireRole>
+              }
+            />
+
+            <Route
+              path="/admin/products"
+              element={
+                <RequireRole user={user} roles={["productManager"]}>
+                  <AdminProductManagerPage />
+                </RequireRole>
+              }
+            />
+
+            {/* ADMIN: Sales Manager (+ Product Manager invoice/order visibility için) */}
+            <Route
+              path="/admin/orders"
+              element={
+                <RequireRole user={user} roles={["salesManager", "productManager"]}>
+                  <AdminOrdersPage />
+                </RequireRole>
+              }
+            />
 
             <Route path="/invoice/:orderId" element={<InvoicePage />} />
             <Route path="/payment" element={<PaymentPage />} />
@@ -122,7 +168,6 @@ function App() {
 
           {/* 🔴 GLOBAL LIVE CHAT (sadece login olmuş kullanıcı) */}
           {user && <CustomerChat user={user} />}
-
         </div>
       </Router>
     </CartProvider>
