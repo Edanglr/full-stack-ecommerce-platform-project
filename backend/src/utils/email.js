@@ -1,5 +1,4 @@
 // backend/src/utils/email.js
-
 import "dotenv/config";
 import nodemailer from "nodemailer";
 
@@ -8,13 +7,7 @@ import nodemailer from "nodemailer";
  * SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
  */
 
-const {
-  SMTP_HOST,
-  SMTP_PORT,
-  SMTP_USER,
-  SMTP_PASS,
-  SMTP_FROM,
-} = process.env;
+const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
 
 // Debug amaçlı: env gerçekten geliyor mu?
 console.log("SMTP CONFIG =>", {
@@ -27,7 +20,7 @@ console.log("SMTP CONFIG =>", {
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: Number(SMTP_PORT) || 587,
-  secure: false, // TLS için secure:false yeterli
+  secure: false,
   auth: {
     user: SMTP_USER,
     pass: SMTP_PASS,
@@ -35,6 +28,7 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
+ * Invoice mail
  * @param {Object} params
  * @param {string} params.to - Email gönderilecek kullanıcı
  * @param {string} params.pdfPath - PDF dosya path'i
@@ -61,7 +55,44 @@ export async function sendInvoiceEmail({ to, pdfPath }) {
     await transporter.sendMail(mailOptions);
   } catch (err) {
     console.error("Failed to send invoice email:", err);
-    // Burada throw bırakıyoruz; orderRoutes içinde try/catch zaten yakalıyor.
     throw err;
+  }
+}
+
+/**
+ * Discount notification mail (wishlist users)
+ * @param {string} to
+ * @param {string} name
+ * @param {Array} products  [{name, price}]
+ * @param {number} rate     0.20 -> %20
+ */
+export async function sendDiscountEmail(to, name, products, rate) {
+  try {
+    if (!to) return;
+
+    const pct = Math.round(Number(rate) * 100);
+
+    const productLines = (products || [])
+      .slice(0, 10)
+      .map((p) => `• ${p.name} — New Price: ${p.price} TL`)
+      .join("\n");
+
+    const mailOptions = {
+      from: SMTP_FROM || SMTP_USER,
+      to,
+      subject: `Discount Alert: ${pct}% off on your wishlist items`,
+      text: `Hi ${name || "Customer"},
+
+Good news! A ${pct}% discount has been applied to some items in your wishlist.
+
+${productLines}
+
+La Strada`,
+    };
+
+    await transporter.sendMail(mailOptions);
+  } catch (err) {
+    // Discount email fail olursa sistemi kırmayalım
+    console.error("Failed to send discount email:", err?.message || err);
   }
 }
