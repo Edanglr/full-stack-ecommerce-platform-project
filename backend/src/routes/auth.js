@@ -6,10 +6,8 @@ import User from "../models/User.js";
 
 const router = Router();
 
-// Preflight
 router.options("*", (_req, res) => res.sendStatus(200));
 
-// JWT helper
 const signToken = (user) =>
   jwt.sign(
     {
@@ -19,9 +17,7 @@ const signToken = (user) =>
       name: user.name,
     },
     process.env.JWT_SECRET,
-    {
-      expiresIn: process.env.JWT_EXPIRES || "7d",
-    }
+    { expiresIn: process.env.JWT_EXPIRES || "7d" }
   );
 
 const setTokenCookie = (res, token) => {
@@ -34,12 +30,13 @@ const setTokenCookie = (res, token) => {
 };
 
 /**
- * REGISTER  (POST /api/auth/register)
- * body: { name, email, password, role? }
+ * REGISTER (POST /api/auth/register)
+ * body: { name, email, password }
+ * ✅ role kabul etmiyoruz
  */
 router.post("/register", async (req, res) => {
   try {
-    const { email, password, name, role } = req.body || {};
+    const { email, password, name } = req.body || {};
 
     if (!name || !email || !password) {
       return res
@@ -48,9 +45,7 @@ router.post("/register", async (req, res) => {
     }
 
     const exists = await User.findOne({ email });
-    if (exists) {
-      return res.status(409).json({ message: "Email already used" });
-    }
+    if (exists) return res.status(409).json({ message: "Email already used" });
 
     const passwordHash = await bcrypt.hash(password, 12);
 
@@ -58,7 +53,7 @@ router.post("/register", async (req, res) => {
       name: name.trim(),
       email,
       passwordHash,
-      role: role || "customer",
+      role: "customer",
     });
 
     const token = signToken(user);
@@ -66,12 +61,7 @@ router.post("/register", async (req, res) => {
 
     return res.status(201).json({
       token,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      user: { id: user._id, email: user.email, name: user.name, role: user.role },
     });
   } catch (e) {
     console.error("REGISTER ERROR:", e);
@@ -79,43 +69,25 @@ router.post("/register", async (req, res) => {
   }
 });
 
-/**
- * LOGIN  (POST /api/auth/login)
- */
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email and password required" });
+      return res.status(400).json({ message: "Email and password required" });
     }
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return res
-        .status(401)
-        .json({ message: "Invalid email or password" });
-    }
+    if (!user) return res.status(401).json({ message: "Invalid email or password" });
 
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) {
-      return res
-        .status(401)
-        .json({ message: "Invalid email or password" });
-    }
+    if (!ok) return res.status(401).json({ message: "Invalid email or password" });
 
     const token = signToken(user);
     setTokenCookie(res, token);
 
     return res.json({
       token,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      user: { id: user._id, email: user.email, name: user.name, role: user.role },
     });
   } catch (e) {
     console.error("LOGIN ERROR:", e);
