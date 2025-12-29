@@ -12,11 +12,14 @@ import orderRoutes from "./src/routes/orderRoutes.js";
 import authRoutes from "./src/routes/auth.js";
 import productRoutes from "./src/routes/productRoutes.js";
 import ratingRoutes from "./src/routes/ratingRoutes.js";
-import userRoutes from "./src/routes/userRoutes.js"; 
+import userRoutes from "./src/routes/userRoutes.js";
 import favoriteRoutes from "./src/routes/favoriteRoutes.js";
 import returnRoutes from "./src/routes/returnRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
 import chatSocket from "./src/socket/chatSocket.js";
+
+// ✅ SALES MANAGER (discount + invoices range + analytics)
+import salesManagerRoutes from "./src/routes/salesManagerRoutes.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -46,17 +49,19 @@ app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/favorites", favoriteRoutes); 
+app.use("/api/favorites", favoriteRoutes);
 app.use("/api/returns", returnRoutes);
 app.use("/api/chats", chatRoutes);
 
+// ✅ NEW: Sales Manager routes
+app.use("/api/sales", salesManagerRoutes);
 
 // 🔌 SOCKET.IO
 const io = new Server(server, {
   cors: {
     origin: ORIGIN,
-    credentials: true
-  }
+    credentials: true,
+  },
 });
 
 chatSocket(io);
