@@ -7,10 +7,8 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
   const navigate = useNavigate();
   const { cartCount } = useCart();
 
-  // Profil menüsünü kontrol eden state
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const closeTimeout = useRef(null);
-
 
   const categories = ["Sweatshirt", "T-shirt", "Short", "Jeans", "Knitwear"];
 
@@ -19,11 +17,18 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
     navigate("/");
   };
 
-  // Kullanıcı baş harfi
   const getInitial = (name) => {
     if (!name) return "?";
     return name.trim().charAt(0).toUpperCase();
   };
+
+  const role = user?.role || "customer";
+
+  // legacy manager her şeye erişsin
+  const isLegacyManager = role === "manager";
+  const isProductManager = role === "productManager" || isLegacyManager;
+  const isSalesManager = role === "salesManager" || isLegacyManager;
+  const isSupportAgent = role === "supportAgent" || isLegacyManager;
 
   return (
     <Navbar
@@ -58,7 +63,6 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
 
         <Navbar.Collapse id="main-navbar">
           <Nav className="ms-auto align-items-center">
-
             {/* SEARCH BAR */}
             <input
               type="text"
@@ -87,29 +91,28 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
               ))}
             </NavDropdown>
 
-            {/* Manager: Product & Order Panels */}
-            {user && user.role === "manager" && (
-               <>
-                  <Nav.Link as={Link} to="/admin/products" className="ms-3">
-                    Manage Products
-                  </Nav.Link>
-        
-                  <Nav.Link as={Link} to="/admin/orders" className="ms-3">
-                    Manage Orders
-                  </Nav.Link>
-                </>
-            )}
-            
+            {/* PRODUCT MANAGER LINKS */}
+            {user && isProductManager && (
+              <>
+                <Nav.Link as={Link} to="/admin/products" className="ms-3">
+                  Manage Products
+                </Nav.Link>
 
-            {/* MANAGER: COMMENT PANEL */}
-            {user && user.role === "manager" && (
-              <Nav.Link as={Link} to="/admin/comments" className="ms-3">
-                Comment Panel
+                <Nav.Link as={Link} to="/admin/comments" className="ms-3">
+                  Comment Panel
+                </Nav.Link>
+              </>
+            )}
+
+            {/* SALES MANAGER LINKS */}
+            {user && isSalesManager && (
+              <Nav.Link as={Link} to="/admin/orders" className="ms-3">
+                Manage Orders
               </Nav.Link>
             )}
 
-            {/* MANAGER: LIVE SUPPORT */}
-            {user && user.role === "manager" && (
+            {/* SUPPORT AGENT LINKS */}
+            {user && isSupportAgent && (
               <Nav.Link as={Link} to="/admin/chats" className="ms-3">
                 Live Support
               </Nav.Link>
@@ -161,15 +164,12 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                   clearTimeout(closeTimeout.current);
                   setShowProfileMenu(true);
                 }}
-
                 onMouseLeave={() => {
                   closeTimeout.current = setTimeout(() => {
                     setShowProfileMenu(false);
-                  }, 200); // 200 ms gecikme
+                  }, 200);
                 }}
-
               >
-                {/* Avatar button */}
                 <button
                   className="nav-profile-button"
                   style={{
@@ -187,7 +187,6 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                   {getInitial(user.name || user.fullName || user.email)}
                 </button>
 
-                {/* Dropdown menu */}
                 {showProfileMenu && (
                   <div
                     className="nav-profile-dropdown"
@@ -249,11 +248,14 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
               </div>
             ) : (
               <>
-                <Nav.Link as={Link} to="/login">Log In</Nav.Link>
-                <Nav.Link as={Link} to="/signup">Sign Up</Nav.Link>
+                <Nav.Link as={Link} to="/login">
+                  Log In
+                </Nav.Link>
+                <Nav.Link as={Link} to="/signup">
+                  Sign Up
+                </Nav.Link>
               </>
             )}
-
           </Nav>
         </Navbar.Collapse>
       </Container>
