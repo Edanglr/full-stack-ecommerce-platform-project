@@ -195,7 +195,7 @@ function OrderHistoryPage() {
                   {/* Product Image */}
                   {item.imageUrl && (
                     <img
-                      src={item.imageUrl || item.image} // İki ihtimali de kontrol et
+                      src={item.imageUrl || item.image} 
                       alt={item.name}
                       style={{
                         width: "80px",
