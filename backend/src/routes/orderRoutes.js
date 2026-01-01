@@ -406,13 +406,9 @@ router.get("/admin/invoices", requireRole("salesManager", "productManager"), asy
   }
 });
 
-/**
- * GET /api/orders/by-user/:userId
- * -> Support: selected customer orders
- */
-router.get(
-  "/by-user/:userId",
-  requireRole("supportAgent", "salesManager", "productManager"),
+// backend/src/routes/orderRoutes.js içinde ilgili rotayı bul ve değiştir:
+
+router.get("/by-user/:userId", requireRole("supportAgent", "salesManager", "productManager"),
   async (req, res) => {
     try {
       const { userId } = req.params;
@@ -420,7 +416,7 @@ router.get(
       const orders = await Order.find({ user: userId })
         .populate({
           path: "items.productId",
-          select: "name image price",
+          select: "name image imageUrl price", // ✅ imageUrl'i seçtiğimizden emin oluyoruz
         })
         .sort({ createdAt: -1 })
         .lean();
@@ -432,8 +428,9 @@ router.get(
         totalPrice: order.totalAmount,
         createdAt: order.createdAt,
         items: order.items.map((i) => ({
-          name: i.productId?.name,
-          image: i.productId?.image,
+          name: i.productId?.name || i.name,
+          // ✅ Frontend'in beklediği imageUrl alanını burada dolduruyoruz
+          imageUrl: i.productId?.imageUrl || i.productId?.image || i.imageUrl || "", 
           price: i.price,
           quantity: i.quantity,
         })),
