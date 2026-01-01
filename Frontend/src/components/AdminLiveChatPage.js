@@ -139,10 +139,9 @@ function AdminLiveChatPage({ user }) {
         )}
       </div>
 
-      {/* SAĞ PANEL (Aynı kalıyor) */}
+      {/* SAĞ PANEL: Sipariş Geçmişi Bölümü */}
       <div style={styles.rightPanel}>
-         {/* ... (Buradaki kodların aynısı) ... */}
-         {loadingDetails ? (
+        {loadingDetails ? (
           <div style={styles.emptyState}>Loading user info...</div>
         ) : customerDetails ? (
           <div>
@@ -153,20 +152,60 @@ function AdminLiveChatPage({ user }) {
               <p><strong>Address:</strong> {customerDetails.user?.address || "N/A"}</p>
             </div>
             <hr style={styles.divider} />
+            
             <h4 style={styles.sectionTitle}>Order History</h4>
             {customerDetails.orders.length > 0 ? (
               customerDetails.orders.map((o) => (
                 <div key={o._id} style={styles.orderCard}>
                   <div style={styles.orderHeader}>
                     <span style={styles.orderId}>#{o.orderCode}</span>
-                    <span style={{ ...styles.statusTag, backgroundColor: o.status === "Delivered" ? "#dcf8c6" : "#fff3cd" }}>{o.status}</span>
+                    <span style={{ 
+                      ...styles.statusTag, 
+                      backgroundColor: o.status === "Delivered" ? "#dcf8c6" : "#fff3cd" 
+                    }}>
+                      {o.status}
+                    </span>
                   </div>
-                   <div style={styles.orderFooter}><strong>Total: {o.totalPrice} TL</strong></div>
+
+                  {/* ✅ SİPARİŞ EDİLEN ÜRÜNLERİN FOTOĞRAFLARI */}
+                  <div style={styles.productList}>
+                    {o.items && o.items.map((item, idx) => (
+                      <div key={idx} style={styles.productItem}>
+                        <img
+                          src={item.imageUrl || item.image} 
+                          alt={item.name}
+                          style={{
+                            width: "45px",
+                            height: "45px",
+                            objectFit: "cover",
+                            borderRadius: "8px",
+                            border: "1px solid #ddd",
+                            flexShrink: 0,
+                          }}
+                          onError={(e) => {
+                            e.target.src = "https://via.placeholder.com/80?text=No+Image";
+                          }}
+                        />
+                        <div style={styles.productInfo}>
+                          <span style={styles.productName}>{item.name}</span>
+                          <span style={styles.productQty}>Qty: {item.quantity}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={styles.orderFooter}>
+                    <strong>Total: {o.totalPrice} TL</strong>
+                  </div>
                 </div>
               ))
-            ) : <p style={styles.noOrder}>No orders found.</p>}
+            ) : (
+              <p style={styles.noOrder}>No orders found.</p>
+            )}
           </div>
-        ) : <div style={styles.emptyState}>User details will appear here.</div>}
+        ) : (
+          <div style={styles.emptyState}>User details will appear here.</div>
+        )}
       </div>
     </div>
   );
@@ -260,6 +299,40 @@ const styles = {
     fontSize: 13,
     marginTop: 20,
   },
+
+  // styles objesinin sonuna veya uygun yerine ekle:
+  productList: { 
+    display: "flex", 
+    flexDirection: "column", 
+    gap: 10, 
+    marginTop: 10 
+  },
+  productItem: { 
+    display: "flex", 
+    gap: 12, 
+    alignItems: "center",
+    padding: "5px 0"
+  },
+  productImg: {
+    width: 45,
+    height: 45,
+    borderRadius: 8,
+    objectFit: "cover",
+    border: "1px solid #ddd",
+  },
+  productInfo: { 
+    display: "flex", 
+    flexDirection: "column" 
+  },
+  productName: { 
+    fontSize: 13, 
+    fontWeight: 500 
+  },
+  productQty: { 
+    fontSize: 11, 
+    color: "#666" 
+  },
+
 };
 
 export default AdminLiveChatPage;
