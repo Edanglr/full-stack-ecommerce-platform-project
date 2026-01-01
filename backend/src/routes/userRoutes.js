@@ -7,10 +7,6 @@ import bcrypt from "bcryptjs";
 
 const router = express.Router();
 
-/**
- * GET /api/users/me
- * Get logged-in user's profile
- */
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-passwordHash");
@@ -24,10 +20,26 @@ router.get("/me", requireAuth, async (req, res) => {
   }
 });
 
-/**
- * PUT /api/users/update
- * Update profile fields
- */
+
+router.get("/cart/:userId", requireAuth, requireRole("supportAgent", "productManager"), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId)
+      .select("cart")
+      .populate({
+        path: "cart.items.productId",
+        select: "name price imageUrl image"
+      });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Sepet verisini döndür (eğer boşsa boş dizi gönder)
+    res.json(user.cart || { items: [] });
+  } catch (err) {
+    console.error("Fetch user cart error:", err);
+    res.status(500).json({ message: "Error fetching user cart" });
+  }
+});
+
 router.put("/update", requireAuth, async (req, res) => {
   try {
     const { name, address, city, postalCode, phone } = req.body;
