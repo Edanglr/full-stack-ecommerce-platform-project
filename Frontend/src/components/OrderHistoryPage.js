@@ -195,7 +195,7 @@ function OrderHistoryPage() {
                   {/* Product Image */}
                   {item.imageUrl && (
                     <img
-                      src={item.imageUrl}
+                      src={item.imageUrl || item.image} // İki ihtimali de kontrol et
                       alt={item.name}
                       style={{
                         width: "80px",
@@ -205,8 +205,7 @@ function OrderHistoryPage() {
                         flexShrink: 0,
                       }}
                       onError={(e) => {
-                        e.target.src =
-                          "https://via.placeholder.com/80?text=No+Image";
+                        e.target.src = "https://via.placeholder.com/80?text=No+Image";
                       }}
                     />
                   )}

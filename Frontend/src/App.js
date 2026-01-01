@@ -36,6 +36,8 @@ import PaymentPage from "./components/PaymentPage";
 // 🔴 LIVE CHAT
 import CustomerChat from "./components/chat/CustomerChat";
 
+// ✅ HATALI SATIR BURADAN SİLİNDİ (app.use...)
+
 console.log("APP ROUTES LOADED!");
 
 // ================= HomePage ==================
@@ -115,7 +117,7 @@ function App() {
             <Route path="/cart" element={<CartPage />} />
             <Route path="/product/:id" element={<ProductDetail />} />
 
-            {/* Customer pages (login şart değil ama bazıları login ister, mevcut sistemin bozulmasın diye aynen bıraktım) */}
+            {/* Customer pages */}
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/payment-methods" element={<PaymentMethodsPage />} />
             <Route path="/returns" element={<ReturnsPage />} />
@@ -152,7 +154,7 @@ function App() {
               }
             />
 
-            {/* ADMIN: Sales Manager (+ Product Manager invoice/order visibility için) */}
+            {/* ADMIN: Sales Manager */}
             <Route
               path="/admin/orders"
               element={

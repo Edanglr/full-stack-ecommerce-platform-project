@@ -63,66 +63,58 @@ function ReturnsPage() {
           <p>You have not requested any returns yet.</p>
         )}
 
-        {returnsList.map((ret) => (
-          <div
-            key={ret._id}
-            style={{
-              border: "1px solid #ddd",
-              borderRadius: "10px",
-              padding: "15px 20px",
-              marginTop: "20px",
-            }}
-          >
-            <h4 style={{ marginBottom: "10px" }}>Return #{ret._id}</h4>
+       
 
+      {returnsList.map((ret) => (
+        <div
+          key={ret._id}
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: "10px",
+            padding: "15px 20px",
+            marginTop: "20px",
+            display: "flex", // Fotoğraf için yan yana düzen
+            gap: "20px",
+            alignItems: "center"
+          }}
+        >
+          {/* Ürün Fotoğrafı Bölümü */}
+          <img
+            src={ret.product?.imageUrl}
+            alt={ret.product?.name}
+            style={{
+              width: "100px",
+              height: "100px",
+              objectFit: "cover",
+              borderRadius: "8px",
+              border: "1px solid #eee"
+            }}
+            onError={(e) => {
+              e.target.src = "https://via.placeholder.com/100?text=No+Image";
+            }}
+          />
+
+          {/* Bilgiler Bölümü */}
+          <div style={{ flex: 1 }}>
+            <h4 style={{ margin: "0 0 10px 0" }}>Return #{ret._id}</h4>
+            <p><strong>Product:</strong> {ret.product?.name || "N/A"}</p>
             <p>
               <strong>Status:</strong>{" "}
-              <span
-                style={{
-                  color:
-                    ret.status === "Requested"
-                      ? "orange"
-                      : ret.status === "Approved"
-                      ? "blue"
-                      : ret.status === "Completed"
-                      ? "green"
-                      : "black",
-                  fontWeight: 600,
-                }}
-              >
+              <span style={{
+                color: ret.status === "Requested" ? "orange" : 
+                      ret.status === "Approved" ? "blue" : 
+                      ret.status === "Completed" ? "green" : "black",
+                fontWeight: 600
+              }}>
                 {ret.status}
               </span>
             </p>
-
-            <p>
-              <strong>Reason:</strong> {ret.reason}
-            </p>
-
-            <p>
-              <strong>Order ID:</strong>{" "}
-              {ret.order?._id || ret.orderId || "N/A"}
-            </p>
-
-            <p>
-              <strong>Product:</strong> {ret.product?.name || "N/A"}
-            </p>
-
-            <p>
-              <strong>Size:</strong> {ret.size}
-            </p>
-
-            <p>
-              <strong>Quantity:</strong> {ret.quantity}
-            </p>
-
-            <p>
-              <strong>Date:</strong>{" "}
-              {ret.createdAt
-                ? new Date(ret.createdAt).toLocaleString()
-                : "-"}
-            </p>
+            {/* Diğer p etiketleri aynı kalabilir... */}
+            <p><strong>Size:</strong> {ret.size} | <strong>Quantity:</strong> {ret.quantity}</p>
+            <p><strong>Reason:</strong> {ret.reason}</p>
           </div>
-        ))}
+        </div>
+      ))}
       </div>
     </ProfileLayout>
   );

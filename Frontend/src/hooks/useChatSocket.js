@@ -1,26 +1,22 @@
+// frontend/src/hooks/useChatSocket.js
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
 const SOCKET_URL = "http://localhost:5050";
 
-export function useChatSocket({
-  chatId,
-  onMessage,
-  onAdminMessage,
-}) {
+export function useChatSocket({ chatId, onMessage, onAdminMessage }) {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    socketRef.current = io(SOCKET_URL, {
-      withCredentials: true,
-    });
+    socketRef.current = io(SOCKET_URL, { withCredentials: true });
 
     if (chatId) {
       socketRef.current.emit("joinChat", { chatId });
     }
 
     if (onMessage) {
-      socketRef.current.on("receiveMessage", (msg) => {
+      // 🔴 DÜZELTME: "receiveMessage" olan ismi "newMessage" yapıyoruz
+      socketRef.current.on("newMessage", (msg) => {
         onMessage(msg);
       });
     }
@@ -36,11 +32,9 @@ export function useChatSocket({
     };
   }, [chatId, onMessage, onAdminMessage]);
 
-  // 🔴 İŞTE KRİTİK KISIM
   const sendMessage = (data) => {
     socketRef.current.emit("sendMessage", data);
   };
 
-  // ✅ MUTLAKA RETURN
   return { sendMessage };
 }

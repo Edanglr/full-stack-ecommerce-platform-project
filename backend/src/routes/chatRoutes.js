@@ -1,11 +1,35 @@
 // backend/src/routes/chatRoutes.js
 import express from "express";
+import multer from "multer"; 
+import path from "path"; 
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import Chat from "../models/Chat.js";
-import User from "../models/User.js";
-import Order from "../models/Order.js";
+import User from "../models/User.js"; // EKLENDİ
+import Order from "../models/Order.js"; // EKLENDİ
 
 const router = express.Router();
+
+// 📂 Dosya Kayıt Konfigürasyonu
+const storage = multer.diskStorage({
+  destination: "uploads/chat/", 
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
+
+// 📤 Dosya Yükleme Endpoint'i
+router.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).send("No file uploaded.");
+  
+  const fileUrl = `http://localhost:5050/uploads/chat/${req.file.filename}`;
+  res.json({ fileUrl, fileName: req.file.originalname });
+});
+
+/* ============================================================
+   ADMIN / SUPPORT AGENT ROTalari
+   ============================================================ */
 
 router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res) => {
   try {
@@ -32,6 +56,7 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res)
         customerName: user?.name || "Unknown User",
         customerEmail: user?.email,
         lastMessageAt: c.lastMessageAt,
+        status: c.status || 'active', // Durum bilgisini ekledik
         lastText: c.messages?.length
           ? c.messages[c.messages.length - 1].text
           : "",
@@ -52,7 +77,6 @@ router.get(
   async (req, res) => {
     try {
       const { customerId } = req.params;
-
       const user = await User.findById(customerId).select("-password").lean();
       if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -61,10 +85,7 @@ router.get(
         .limit(10)
         .lean();
 
-      res.json({
-        user,
-        orders: orders || [],
-      });
+      res.json({ user, orders: orders || [] });
     } catch (err) {
       console.error("User details error:", err);
       res.status(500).json({ message: "Error fetching user details" });
@@ -72,43 +93,50 @@ router.get(
   }
 );
 
+/* ============================================================
+   GENEL CHAT ROTalari
+   ============================================================ */
+
 router.get("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
-
     const chat = await Chat.findOne({ chatId }).lean();
 
     if (!chat) {
       return res.json({ chatId, messages: [] });
     }
-
-    res.json({ chatId, messages: chat.messages || [] });
+    // Sohbetin kapalı olup olmadığını frontend'in anlaması için tüm objeyi dönüyoruz
+    res.json(chat); 
   } catch (err) {
     console.error("Fetch messages error:", err);
     res.status(500).json({ message: "Failed to fetch messages" });
   }
 });
 
-// ✅ Silme işlemi de supportAgent (ve manager legacy) olmalı
-router.delete("/:chatId", requireAuth, requireRole("supportAgent"), async (req, res) => {
+// ✅ Sohbeti Sonlandırma (Status: closed)
+// backend/src/routes/chatRoutes.js içindeki ilgili bölüm:
+
+router.put("/:chatId/close", async (req, res) => {
   try {
     const { chatId } = req.params;
+    
+    const updatedChat = await Chat.findOneAndUpdate(
+      { chatId: chatId },
+      { 
+        $set: { 
+          status: "closed",
+          messages: [] // ✅ Geçmişi tamamen silmek için ekleyin
+        } 
+      }, 
+      { new: true }
+    );
 
-    console.log(`🗑️ SİLME İSTEĞİ GELDİ: ${chatId}`);
+    if (!updatedChat) return res.status(404).json({ message: "Chat not found" });
 
-    const deletedChat = await Chat.findOneAndDelete({ chatId: chatId });
-
-    if (!deletedChat) {
-      console.log("❌ Silinecek sohbet bulunamadı (Zaten silinmiş olabilir).");
-      return res.status(404).json({ message: "Chat not found" });
-    }
-
-    console.log("✅ Sohbet başarıyla silindi!");
-    res.status(200).json({ message: "Chat deleted successfully" });
+    res.status(200).json({ message: "Chat history cleared and closed" });
   } catch (err) {
-    console.error("❌ Chat delete error:", err);
-    res.status(500).json({ message: "Failed to delete chat" });
+    console.error("Close chat error:", err);
+    res.status(500).json({ message: "Error closing chat" });
   }
 });
-
 export default router;

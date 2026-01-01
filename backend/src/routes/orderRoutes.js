@@ -185,34 +185,43 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * CUSTOMER ORDER HISTORY
+ * GET /api/orders/my
+ */
 router.get("/my", requireAuth, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
       .populate({
         path: "items.productId",
-        select: "name image price",
+        select: "name imageUrl image price", // image ve imageUrl ikisini de çekiyoruz 🛡️
       })
       .sort({ createdAt: -1 })
       .lean();
 
     const formatted = orders.map((order) => ({
       _id: order._id,
+      // Tracking code ve diğer alanların dolu gitmesini sağlıyoruz
       orderCode: order._id.toString().slice(-6).toUpperCase(),
-      totalPrice: order.totalAmount,
-      status: order.shippingStatus,
+      trackingCode: order.trackingCode || "N/A", 
+      status: order.shippingStatus || "Processing",
+      totalAmount: order.totalAmount, // "Total: TL" boşluğunu doldurur
       createdAt: order.createdAt,
+      shippingHistory: order.shippingHistory || [],
       items: order.items.map((i) => ({
-        name: i.productId?.name,
-        image: i.productId?.image,
+        name: i.productId?.name || "Product",
+        // Frontend'in beklediği 'imageUrl' alanını burada oluşturuyoruz
+        imageUrl: i.productId?.imageUrl || i.productId?.image || "https://via.placeholder.com/80?text=No+Image",
         price: i.price,
         quantity: i.quantity,
+        size: i.size || "-"
       })),
     }));
 
     res.json(formatted);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Order fetch error" });
+    console.error("ORDER FETCH ERROR:", err);
+    res.status(500).json({ message: "Order fetch error." });
   }
 });
 

@@ -1,55 +1,51 @@
+// backend/src/socket/chatSocket.js
 import Chat from "../models/Chat.js";
 import User from "../models/User.js";
 
 const chatSocket = (io) => {
   io.on("connection", (socket) => {
-    // console.log("🟢 Socket connected:", socket.id); // Log kirliliği olmaması için kapattım
 
     socket.on("joinChat", ({ chatId }) => {
       socket.join(chatId);
-      // console.log(`Socket joined ${chatId}`);
     });
 
     socket.on("sendMessage", async (data) => {
       try {
-        /* 🛡️ GÜVENLİK KONTROLÜ: Veriler dolu mu? */
         if (!data.chatId || !data.text || !data.senderId) {
-          console.error("❌ Eksik Veri:", data);
+          console.error("❌ Missing Data:", data);
           return;
         }
 
-        let senderName = "Unknown";
+        let senderName = data.senderName || "Unknown";
 
-        // 1️⃣ Kullanıcı İsmini Bulmaya Çalış (Hata olursa patlamasın)
         try {
-          // Eğer senderId geçerli bir ID formatında değilse findById hata verir, onu yakalıyoruz.
           if (data.senderId.match(/^[0-9a-fA-F]{24}$/)) {
              const user = await User.findById(data.senderId).select("name");
              if (user) senderName = user.name;
-          } else {
-             // Eğer customer değilse ve ID formatı farklıysa (admin vs) gelen ismi kullan
-             senderName = data.senderName || "Support"; 
           }
         } catch (err) {
-          console.warn("⚠️ Kullanıcı adı bulunamadı, varsayılan kullanılıyor:", err.message);
+          console.warn("⚠️ Username warning:", err.message);
         }
 
+        // 1️⃣ Mesaj objesini hazırla
         const messageData = {
           senderId: data.senderId,
-          senderRole: data.senderRole || "customer", // Role boşsa customer varsay
+          senderRole: data.senderRole || "customer",
           senderName: senderName,
           text: data.text,
+          fileUrl: data.fileUrl || null,
           timestamp: new Date(),
         };
 
-        // 2️⃣ Mesajı anında ilet (Socket)
-        io.to(data.chatId).emit("receiveMessage", messageData);
+        // 2️⃣ ✅ KRİTİK DÜZELTME: 'newMessage' ismini kullanın
+        // Frontend tarafındaki handleNewMessage fonksiyonu bu ismi bekliyor.
+        io.to(data.chatId).emit("newMessage", messageData);
+        
+        // Admin panelindeki genel bildirim için
         io.emit("adminNewMessage", { ...messageData, chatId: data.chatId });
 
-        // 3️⃣ VERİTABANINA KAYDET
-        // Customer ID belirle
-        const customerId =
-          data.senderRole === "customer"
+        // 3️⃣ Veritabanına Kaydet
+        const customerId = data.senderRole === "customer"
             ? data.senderId
             : data.chatId.replace("chat-", "");
 
@@ -58,32 +54,27 @@ const chatSocket = (io) => {
           {
             $setOnInsert: {
               chatId: data.chatId,
-              customerId: customerId, // Şemada required: true
+              customerId: customerId,
             },
             $push: {
-              messages: messageData, // Şemaya uygun obje
+              messages: messageData,
             },
             $set: {
               lastMessageAt: messageData.timestamp,
+              status: "active" 
             },
           },
           { upsert: true, new: true, runValidators: true }
         );
 
-        console.log(`✅ Mesaj Kaydedildi! ChatID: ${data.chatId}`);
+        console.log(`✅ Message sent and saved to DB! ChatID: ${data.chatId}`);
 
       } catch (err) {
-        console.error("❌ DB SAVE HATASI:", err);
-        // Hata detayını gör ki sorunu anlayalım
-        if (err.name === 'ValidationError') {
-           console.error("Validasyon Detayı:", err.errors);
-        }
+        console.error("❌ Socket Error:", err);
       }
     });
 
-    socket.on("disconnect", () => {
-      // console.log("🔴 Disconnected");
-    });
+    socket.on("disconnect", () => { });
   });
 };
 
