@@ -1,4 +1,3 @@
-// backend/server.js
 import "dotenv/config";
 
 import express from "express";
@@ -10,7 +9,6 @@ import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Route Importları
 import orderRoutes from "./src/routes/orderRoutes.js";
 import authRoutes from "./src/routes/auth.js";
 import productRoutes from "./src/routes/productRoutes.js";
@@ -21,18 +19,15 @@ import returnRoutes from "./src/routes/returnRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
 import chatSocket from "./src/socket/chatSocket.js";
 
-// ✅ SALES MANAGER (discount + invoices range + analytics)
+// Sales manager routes should expose discount campaign endpoints.
 import salesManagerRoutes from "./src/routes/salesManagerRoutes.js";
 
-// 📂 __dirname Tanımlaması (ES Modülleri için zorunlu)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
 
-// 📂 STATİK DOSYA ERİŞİMİ
-// Yüklenen chat dosyalarına http://localhost:5050/uploads/... üzerinden erişimi sağlar
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const PORT = process.env.PORT || 5050;
@@ -51,10 +46,8 @@ app.options("*", cors(corsOpts));
 app.use(express.json());
 app.use(cookieParser());
 
-// Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-// API ROUTES
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
@@ -64,10 +57,9 @@ app.use("/api/favorites", favoriteRoutes);
 app.use("/api/returns", returnRoutes);
 app.use("/api/chats", chatRoutes);
 
-// ✅ Sales Manager routes
+// Sales manager: discounts, analytics, invoice ranges.
 app.use("/api/sales", salesManagerRoutes);
 
-// 🔌 SOCKET.IO
 const io = new Server(server, {
   cors: {
     origin: ORIGIN,
@@ -77,7 +69,6 @@ const io = new Server(server, {
 
 chatSocket(io);
 
-// 🚀 START
 const start = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
