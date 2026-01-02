@@ -1,12 +1,15 @@
+// backend/src/routes/salesManagerRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
-import User from "../models/User.js";
-import Favorite from "../models/Favorite.js";
 import Order from "../models/Order.js";
-import { sendDiscountEmail } from "../utils/email.js";
+import Favorite from "../models/Favorite.js";
+import User from "../models/User.js";
 import { requireSalesManager } from "../middleware/auth.js";
+import { sendDiscountEmail } from "../utils/email.js";
 
 const router = express.Router();
+
+// ========== HELPER FUNCTIONS ==========
 
 function parseDateRange(from, to) {
   let fromDate = null;
@@ -39,11 +42,9 @@ function buildCreatedAtFilter(from, to) {
   return Object.keys(filter).length ? { createdAt: filter } : {};
 }
 
+// ========== 1) INVOICES ==========
 /**
- * =========================
- * 1) INVOICES (Date range)
  * GET /api/sales/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
- * =========================
  */
 router.get("/invoices", requireSalesManager, async (req, res) => {
   try {
@@ -55,119 +56,106 @@ router.get("/invoices", requireSalesManager, async (req, res) => {
       .sort({ createdAt: -1 });
 
     return res.json(orders);
-  } catch (err) {
-    console.error("INVOICES ERROR:", err);
-    return res.status(500).json({ message: "Server error: " + err.message });
+  } catch (e) {
+    console.error("INVOICES ERROR:", e);
+    return res.status(500).json({ message: "Invoices fetch failed" });
   }
 });
 
+// ========== 2) DISCOUNT (Selected Products) ==========
 /**
- * =========================
- * 2) APPLY DISCOUNT (Selected products)
  * POST /api/sales/discount
- * Body: { productIds: string[], discountRate: number }  // 0.20
- * - Sets discountRate
- * - Stores originalPrice if missing
- * - Updates price = originalPrice * (1 - discountRate)
- * - Sends wishlist emails
- * =========================
+ * Body: { productIds: [id...], discountRate: 0.2 }  // 0.20 = %20
+ * ✅ TASK 2: Wishlist notification
  */
 router.post("/discount", requireSalesManager, async (req, res) => {
   try {
-    const productIds = Array.isArray(req.body.productIds) ? req.body.productIds : [];
-    const discountRate = Number(req.body.discountRate);
-
-    if (!productIds.length) {
-      return res.status(400).json({ message: "productIds is required." });
+    const { productIds, discountRate } = req.body || {};
+    
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ message: "productIds array required" });
     }
 
-    if (Number.isNaN(discountRate) || discountRate <= 0 || discountRate >= 1) {
+    const r = Number(discountRate);
+    if (!(r > 0 && r < 1)) {
       return res
         .status(400)
-        .json({ message: "discountRate must be a decimal like 0.10, 0.20, 0.25" });
+        .json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
     }
 
     const products = await Product.find({ _id: { $in: productIds } });
-    if (!products || products.length === 0) {
-      return res.status(404).json({ message: "No products found for given IDs." });
+    if (products.length === 0) {
+      return res.status(404).json({ message: "No products found" });
     }
 
-    // ✅ Update each selected product price based on originalPrice
-    // If originalPrice is missing, set it once to current price.
+    // ✅ Price update - basePrice yerine originalPrice kullan (consistency)
     let updatedCount = 0;
 
     for (const p of products) {
       const currentPrice = Number(p.price);
-      const original = p.originalPrice != null ? Number(p.originalPrice) : currentPrice;
-
-      if (Number.isNaN(original) || original <= 0) continue;
-
-      const newPrice = Math.round(original * (1 - discountRate) * 100) / 100;
-
-      const updateDoc = {
-        discountRate: discountRate,
-        price: newPrice,
-      };
-
-      // set originalPrice only if not exists
-      if (p.originalPrice == null) {
-        updateDoc.originalPrice = original;
+      
+      // originalPrice yoksa mevcut fiyatı kaydet
+      if (p.basePrice == null && p.originalPrice == null) {
+        p.basePrice = currentPrice;
+        p.originalPrice = currentPrice;
       }
-
-      const r = await Product.updateOne({ _id: p._id }, { $set: updateDoc });
-      if (r && (r.modifiedCount || r.nModified)) updatedCount += 1;
+      
+      const base = Number(p.basePrice ?? p.originalPrice ?? p.price);
+      
+      p.basePrice = base;
+      p.originalPrice = base;
+      p.discountRate = r;
+      p.price = Math.round(base * (1 - r) * 100) / 100;
+      
+      await p.save();
+      updatedCount++;
     }
 
-    // Wishlist notify: Favorite collection fields are { user, product }
-    const favs = await Favorite.find({ product: { $in: productIds } }).select("user product");
+    // ✅ TASK 2: Wishlist notify
+    const favs = await Favorite.find({ product: { $in: productIds } })
+      .select("user product")
+      .lean();
+
     const userIds = [...new Set(favs.map((f) => String(f.user)))];
+    const users = await User.find({ _id: { $in: userIds } })
+      .select("email name")
+      .lean();
 
-    const users = await User.find({ _id: { $in: userIds } }).select("name email");
+    let notifiedCount = 0;
 
-    const productMap = new Map(products.map((pp) => [String(pp._id), pp]));
-
-    let notifiedUsers = 0;
     for (const u of users) {
-      const userFavs = favs.filter((f) => String(f.user) === String(u._id));
-      const wishlistProducts = userFavs
-        .map((f) => productMap.get(String(f.product)))
-        .filter(Boolean);
-
-      if (wishlistProducts.length > 0) {
-        // ✅ send decimal (0.20), email will convert to %20
-        await sendDiscountEmail(u.email, u.name, wishlistProducts, discountRate);
-        notifiedUsers += 1;
+      if (u.email) {
+        try {
+          await sendDiscountEmail(u.email, u.name || "Customer", products, r);
+          notifiedCount++;
+        } catch (emailErr) {
+          console.error(`Failed to send discount email to ${u.email}:`, emailErr);
+        }
       }
     }
 
     return res.json({
-      message: "Discount applied to selected products, prices updated, emails sent.",
-      updatedCount,
-      notifiedUsers,
+      message: "Discount applied and wishlist users notified",
+      updatedCount: updatedCount,
+      notifiedUsers: notifiedCount,
     });
-  } catch (err) {
-    console.error("DISCOUNT (SELECTED) ERROR:", err);
-    return res.status(500).json({ message: "Server error: " + err.message });
+  } catch (e) {
+    console.error("DISCOUNT ERROR:", e);
+    return res.status(500).json({ message: "Discount failed" });
   }
 });
 
+// ========== 3) DISCOUNT (All Products) ==========
 /**
- * =========================
- * 3) APPLY DISCOUNT (All products)
  * POST /api/sales/discount/all
- * Body: { rate: number }   // 20 means 20%
- * - Converts to decimal
- * - Stores originalPrice if missing
- * - Updates price = originalPrice * (1 - discountRate)
- * - Sends wishlist emails
- * =========================
+ * Body: { rate: 20 }  // 20 = %20
  */
 router.post("/discount/all", requireSalesManager, async (req, res) => {
   try {
     const rate = Number(req.body.rate || 0);
 
     if (Number.isNaN(rate) || rate < 0 || rate > 90) {
-      return res.status(400).json({ message: "Invalid discount rate." });
+      return res.status(400).json({ message: "Invalid discount rate (0-90)." });
     }
 
     const products = await Product.find({});
@@ -176,52 +164,63 @@ router.post("/discount/all", requireSalesManager, async (req, res) => {
     }
 
     const discountRate = rate / 100;
-
     let updatedCount = 0;
 
     for (const p of products) {
       const currentPrice = Number(p.price);
-      const original = p.originalPrice != null ? Number(p.originalPrice) : currentPrice;
-
-      if (Number.isNaN(original) || original <= 0) continue;
-
-      const newPrice = Math.round(original * (1 - discountRate) * 100) / 100;
-
-      const updateDoc = {
-        discountRate: discountRate,
-        price: newPrice,
-      };
-
-      if (p.originalPrice == null) {
-        updateDoc.originalPrice = original;
+      
+      if (p.basePrice == null && p.originalPrice == null) {
+        p.basePrice = currentPrice;
+        p.originalPrice = currentPrice;
       }
+      
+      const base = Number(p.basePrice ?? p.originalPrice ?? p.price);
 
-      const r = await Product.updateOne({ _id: p._id }, { $set: updateDoc });
-      if (r && (r.modifiedCount || r.nModified)) updatedCount += 1;
+      p.basePrice = base;
+      p.originalPrice = base;
+      p.discountRate = discountRate;
+      p.price = Math.round(base * (1 - discountRate) * 100) / 100;
+
+      await p.save();
+      updatedCount++;
     }
 
+    // Wishlist notify for all products
     const productIds = products.map((p) => String(p._id));
-    const favs = await Favorite.find({ product: { $in: productIds } }).select("user product");
+    const favs = await Favorite.find({ product: { $in: productIds } })
+      .select("user product")
+      .lean();
 
     const userIds = [...new Set(favs.map((f) => String(f.user)))];
-    const users = await User.find({ _id: { $in: userIds } }).select("name email");
+    const users = await User.find({ _id: { $in: userIds } })
+      .select("name email")
+      .lean();
 
     const productMap = new Map(products.map((pp) => [String(pp._id), pp]));
+    let notifiedCount = 0;
 
     for (const u of users) {
+      if (!u.email) continue;
+
       const userFavs = favs.filter((f) => String(f.user) === String(u._id));
       const wishlistProducts = userFavs
         .map((f) => productMap.get(String(f.product)))
         .filter(Boolean);
 
       if (wishlistProducts.length > 0) {
-        await sendDiscountEmail(u.email, u.name, wishlistProducts, discountRate);
+        try {
+          await sendDiscountEmail(u.email, u.name || "Customer", wishlistProducts, discountRate);
+          notifiedCount++;
+        } catch (emailErr) {
+          console.error(`Failed to send email to ${u.email}:`, emailErr);
+        }
       }
     }
 
     return res.json({
       message: `Discount applied (%${rate}). Prices updated and emails sent.`,
       updatedCount,
+      notifiedUsers: notifiedCount,
     });
   } catch (err) {
     console.error("DISCOUNT ALL ERROR:", err);
@@ -229,120 +228,118 @@ router.post("/discount/all", requireSalesManager, async (req, res) => {
   }
 });
 
+// ========== 4) PRICES (Manual) ==========
 /**
- * =========================
- * 4) PRICES (Manual updates)
  * PUT /api/sales/prices
  * Body: { updates: [{ productId, newPrice }] }
- * =========================
  */
 router.put("/prices", requireSalesManager, async (req, res) => {
   try {
-    const updates = Array.isArray(req.body.updates) ? req.body.updates : [];
-
-    if (!updates.length) {
-      return res.status(400).json({ message: "updates is required." });
+    const { updates } = req.body || {};
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ message: "updates array required" });
     }
 
     let updatedCount = 0;
 
     for (const u of updates) {
-      const productId = u.productId;
-      const newPrice = Number(u.newPrice);
+      const productId = u?.productId;
+      const newPrice = Number(u?.newPrice);
 
-      if (!productId) continue;
-      if (Number.isNaN(newPrice) || newPrice <= 0) continue;
+      if (!productId || !(newPrice > 0)) continue;
 
-      const r = await Product.updateOne(
-        { _id: productId },
-        { $set: { price: newPrice } }
-      );
+      const p = await Product.findById(productId);
+      if (!p) continue;
 
-      if (r && (r.modifiedCount || r.nModified)) {
-        updatedCount += 1;
-      }
+      // Manuel fiyat değişikliği - indirimi sıfırla
+      p.price = Math.round(newPrice * 100) / 100;
+      p.basePrice = Math.round(newPrice * 100) / 100;
+      p.originalPrice = Math.round(newPrice * 100) / 100;
+      p.discountRate = 0;
+
+      await p.save();
+      updatedCount++;
     }
 
-    return res.json({ message: "Prices updated.", updatedCount });
-  } catch (err) {
-    console.error("PRICES ERROR:", err);
-    return res.status(500).json({ message: "Server error: " + err.message });
+    return res.json({ message: "Prices updated", updatedCount });
+  } catch (e) {
+    console.error("PRICES ERROR:", e);
+    return res.status(500).json({ message: "Price update failed" });
   }
 });
 
+// ========== 5) ANALYTICS ==========
 /**
- * =========================
- * 5) ANALYTICS (Revenue / Cost / Profit + daily series)
  * GET /api/sales/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD
- * =========================
+ * Revenue, cost, profit + daily series
  */
 router.get("/analytics", requireSalesManager, async (req, res) => {
   try {
     const { from, to } = req.query || {};
     const dateFilter = buildCreatedAtFilter(from, to);
 
-    const orders = await Order.find(dateFilter).sort({ createdAt: 1 });
+    const orders = await Order.find(dateFilter)
+      .populate("items.productId", "cost price basePrice")
+      .sort({ createdAt: 1 });
 
     let revenue = 0;
     let cost = 0;
 
-    const byDate = new Map();
+    const byDay = new Map();
 
     for (const o of orders) {
-      const total = Number(o.totalAmount || 0);
-      revenue += total;
+      const dayKey = new Date(o.createdAt).toISOString().slice(0, 10);
+      
+      if (!byDay.has(dayKey)) {
+        byDay.set(dayKey, { revenue: 0, cost: 0 });
+      }
 
-      const created = new Date(o.createdAt);
-      const dateStr = !Number.isNaN(created.getTime())
-        ? created.toISOString().slice(0, 10)
-        : "unknown";
+      for (const it of o.items || []) {
+        const salePrice = Number(it.price ?? 0);
+        const qty = Number(it.quantity ?? 1);
 
-      let orderCost = 0;
+        const lineRevenue = salePrice * qty;
 
-      const items = Array.isArray(o.items) ? o.items : [];
-      for (const it of items) {
-        const qty = Number(it.quantity || 1);
-
-        const explicitCost = Number(it.cost);
-        if (!Number.isNaN(explicitCost) && explicitCost > 0) {
-          orderCost += explicitCost * qty;
+        // Cost: item.cost > productId.cost > 50% of sale price
+        let unitCost = 0;
+        if (it.cost != null && !Number.isNaN(Number(it.cost))) {
+          unitCost = Number(it.cost);
+        } else if (it.productId?.cost != null && !Number.isNaN(Number(it.productId.cost))) {
+          unitCost = Number(it.productId.cost);
         } else {
-          const salePrice = Number(it.price || 0);
-          orderCost += salePrice * qty * 0.5;
+          unitCost = salePrice * 0.5;
         }
+
+        const lineCost = unitCost * qty;
+
+        revenue += lineRevenue;
+        cost += lineCost;
+
+        byDay.get(dayKey).revenue += lineRevenue;
+        byDay.get(dayKey).cost += lineCost;
       }
-
-      cost += orderCost;
-
-      if (!byDate.has(dateStr)) {
-        byDate.set(dateStr, { date: dateStr, revenue: 0, cost: 0, profit: 0 });
-      }
-
-      const agg = byDate.get(dateStr);
-      agg.revenue += total;
-      agg.cost += orderCost;
-      agg.profit = agg.revenue - agg.cost;
-      byDate.set(dateStr, agg);
     }
 
-    const profit = revenue - cost;
-
-    const series = Array.from(byDate.values()).map((x) => ({
-      date: x.date,
-      revenue: Math.round(x.revenue * 100) / 100,
-      cost: Math.round(x.cost * 100) / 100,
-      profit: Math.round(x.profit * 100) / 100,
-    }));
+    const series = [...byDay.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, v]) => ({
+        date,
+        revenue: Math.round(v.revenue * 100) / 100,
+        cost: Math.round(v.cost * 100) / 100,
+        profit: Math.round((v.revenue - v.cost) * 100) / 100,
+      }));
 
     return res.json({
+      from: from || "1970-01-01",
+      to: to || new Date().toISOString().slice(0, 10),
       revenue: Math.round(revenue * 100) / 100,
       cost: Math.round(cost * 100) / 100,
-      profit: Math.round(profit * 100) / 100,
+      profit: Math.round((revenue - cost) * 100) / 100,
       series,
     });
-  } catch (err) {
-    console.error("ANALYTICS ERROR:", err);
-    return res.status(500).json({ message: "Server error: " + err.message });
+  } catch (e) {
+    console.error("ANALYTICS ERROR:", e);
+    return res.status(500).json({ message: "Analytics failed" });
   }
 });
 
