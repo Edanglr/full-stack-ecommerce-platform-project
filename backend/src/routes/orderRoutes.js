@@ -1,4 +1,3 @@
-// backend/src/routes/orderRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
@@ -12,6 +11,8 @@ import { sendInvoiceEmail } from "../utils/email.js";
 
 const router = express.Router();
 
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
 // 1) Yeni Sipariş Oluşturma
 router.post("/", requireAuth, async (req, res) => {
   try {
@@ -21,11 +22,20 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "No items provided in the order." });
     }
 
-    // Stok kontrolü
+    const productById = new Map();
+
+    // Stock check and product validation.
     for (const item of items) {
       const product = await Product.findById(item.productId);
-      if (!product) return res.status(404).json({ message: `Product not found: ${item.productId}` });
-      if (!item.size) return res.status(400).json({ message: `Size is required for product ${product.name}` });
+      if (!product) {
+        return res.status(404).json({ message: `Product not found: ${item.productId}` });
+      }
+
+      productById.set(String(item.productId), product);
+
+      if (!item.size) {
+        return res.status(400).json({ message: `Size is required for product ${product.name}` });
+      }
 
       const sizeKey = item.size;
       const sizes = product.sizes || {};
@@ -38,17 +48,75 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    // Stok düşme
-    for (const item of items) {
+    // Normalize items and compute purchase-time snapshots on the server.
+    const normalizedItems = items.map((item) => {
+      const product = productById.get(String(item.productId));
+
+      const qty = Number(item.quantity) || 0;
+      const listPrice =
+        product.basePrice != null ? Number(product.basePrice) : Number(product.price);
+
+      const discountRate = Number(product.discountRate) || 0; // 0..1
+      const unitPrice = round2(Math.max(0, listPrice * (1 - discountRate)));
+
+      const unitCost = product.cost != null ? Number(product.cost) : null;
+
+      return {
+        productId: item.productId,
+        name: item.name || product.name,
+        size: item.size || "",
+        quantity: qty,
+
+        // Kept for compatibility; set to server-calculated effective price.
+        price: unitPrice,
+
+        imageUrl: item.imageUrl || product.imageUrl || "",
+
+        unitPriceAtPurchase: unitPrice,
+        unitListPriceAtPurchase: round2(listPrice),
+        discountRateAtPurchase: discountRate,
+        unitCostAtPurchase: unitCost,
+        discountCampaignId: null,
+      };
+    });
+
+    // Stock decrease using normalized items.
+    for (const item of normalizedItems) {
       const sizeKey = item.size;
       await Product.findByIdAndUpdate(item.productId, {
         $inc: { [`sizes.${sizeKey}`]: -item.quantity },
       });
     }
 
-    const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    // Totals based on snapshots.
+    const subtotalAtPurchase = round2(
+      normalizedItems.reduce(
+        (sum, it) => sum + (it.unitListPriceAtPurchase ?? it.price) * it.quantity,
+        0
+      )
+    );
 
-    // Mock bankadan ödeme al
+    const totalAtPurchase = round2(
+      normalizedItems.reduce(
+        (sum, it) => sum + (it.unitPriceAtPurchase ?? it.price) * it.quantity,
+        0
+      )
+    );
+
+    const discountTotalAtPurchase = round2(Math.max(0, subtotalAtPurchase - totalAtPurchase));
+
+    const profitRaw = normalizedItems.reduce((sum, it) => {
+      if (it.unitCostAtPurchase == null) return sum;
+      return sum + (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) * it.quantity;
+    }, 0);
+
+    const profitAtPurchase =
+      normalizedItems.some((it) => it.unitCostAtPurchase == null) ? null : round2(profitRaw);
+
+    // Keep old totalAmount in sync for existing UI.
+    const totalAmount = totalAtPurchase;
+
+    // Mock payment
     const paymentResult = await mockBankCharge({ amount: totalAmount, user: req.user });
     if (!paymentResult || !paymentResult.success) {
       return res.status(402).json({ message: "Payment failed. Please try again." });
@@ -58,13 +126,24 @@ router.post("/", requireAuth, async (req, res) => {
 
     const newOrder = await Order.create({
       user: req.user.id,
-      items,
+      items: normalizedItems,
       totalAmount,
+
+      subtotalAtPurchase,
+      discountTotalAtPurchase,
+      totalAtPurchase,
+      profitAtPurchase,
+
       trackingCode,
       shippingStatus: "Processing",
       shippingHistory: [{ status: "Order received", date: new Date() }],
+
       paymentStatus: "Paid",
-      paymentDetails: { transactionId: paymentResult.transactionId || "", authCode: paymentResult.authCode || "" },
+      paymentDetails: {
+        transactionId: paymentResult.transactionId || "",
+        authCode: paymentResult.authCode || "",
+      },
+
       deliveryAddress: deliveryAddress || "",
       isCompleted: false,
     });
@@ -76,7 +155,14 @@ router.post("/", requireAuth, async (req, res) => {
         newOrder.invoiceNumber = invoiceNumber;
         newOrder.invoicePdfPath = pdfPath;
         await newOrder.save();
-        if (user.email) await sendInvoiceEmail({ to: user.email, pdfPath });
+
+        if (user.email) {
+          try {
+            await sendInvoiceEmail({ to: user.email, pdfPath });
+          } catch (emailErr) {
+            console.error("EMAIL ERROR:", emailErr);
+          }
+        }
       } catch (invoiceErr) {
         console.error("INVOICE ERROR:", invoiceErr);
       }
@@ -98,6 +184,10 @@ router.post("/", requireAuth, async (req, res) => {
           city: user?.city || "",
           postalCode: user?.postalCode || user?.zip || "",
         },
+        subtotalAtPurchase: newOrder.subtotalAtPurchase,
+        discountTotalAtPurchase: newOrder.discountTotalAtPurchase,
+        totalAtPurchase: newOrder.totalAtPurchase,
+        profitAtPurchase: newOrder.profitAtPurchase,
       },
     });
   } catch (err) {
@@ -117,19 +207,26 @@ router.get("/my", requireAuth, async (req, res) => {
     const formatted = orders.map((order) => ({
       _id: order._id,
       orderCode: order._id.toString().slice(-6).toUpperCase(),
-      trackingCode: order.trackingCode || "N/A", 
+      trackingCode: order.trackingCode || "N/A",
       shippingStatus: order.shippingStatus || "Processing",
-      totalAmount: order.totalAmount, 
+      totalAmount: order.totalAtPurchase ?? order.totalAmount,
       createdAt: order.createdAt,
       shippingHistory: order.shippingHistory || [],
-      items: order.items.map((i) => ({
+      items: (order.items || []).map((i) => ({
         name: i.productId?.name || i.name || "Product",
         productId: i.productId?._id || i.productId,
-        imageUrl: i.productId?.imageUrl || i.productId?.image || i.imageUrl || "https://via.placeholder.com/80?text=No+Image",
-        price: i.price,
+        imageUrl:
+          i.productId?.imageUrl ||
+          i.productId?.image ||
+          i.imageUrl ||
+          "https://via.placeholder.com/80?text=No+Image",
+        price: i.unitPriceAtPurchase ?? i.price,
         quantity: i.quantity,
         size: i.size,
       })),
+      subtotalAtPurchase: order.subtotalAtPurchase ?? null,
+      discountTotalAtPurchase: order.discountTotalAtPurchase ?? 0,
+      profitAtPurchase: order.profitAtPurchase ?? null,
     }));
 
     res.json(formatted);
@@ -152,14 +249,12 @@ router.delete("/:id", requireAuth, async (req, res) => {
       return res.status(400).json({ message: `Cannot cancel order in ${order.shippingStatus} status.` });
     }
 
-    // Stokları geri yükle
     for (const item of order.items) {
       await Product.findByIdAndUpdate(item.productId, {
         $inc: { [`sizes.${item.size}`]: item.quantity },
       });
     }
 
-    // Siparişi silmek yerine durumunu Cancelled yapıyoruz (Kaydı korumak için tavsiye edilir)
     order.shippingStatus = "Cancelled";
     order.shippingHistory.push({ status: "Order cancelled by customer", date: new Date() });
     await order.save();
@@ -190,27 +285,31 @@ router.post("/:orderId/cancel-item", requireRole("supportAgent", "productManager
 
     const cancelledItem = order.items[itemIndex];
 
-    // Stok geri yükle
     await Product.findByIdAndUpdate(cancelledItem.productId, {
       $inc: { [`sizes.${cancelledItem.size || ""}`]: cancelledItem.quantity }
     });
 
-    // Fiyatı düş ve ürünü çıkar
-    order.totalAmount = Math.max(0, order.totalAmount - (cancelledItem.price * cancelledItem.quantity));
+    const unit = Number(cancelledItem.unitPriceAtPurchase ?? cancelledItem.price) || 0;
+    const list = Number(cancelledItem.unitListPriceAtPurchase ?? cancelledItem.price) || 0;
+    const qty = Number(cancelledItem.quantity) || 0;
+
+    order.totalAmount = Math.max(0, (order.totalAtPurchase ?? order.totalAmount ?? 0) - unit * qty);
+    order.totalAtPurchase = order.totalAmount;
+
+    if (order.subtotalAtPurchase != null) {
+      order.subtotalAtPurchase = Math.max(0, Number(order.subtotalAtPurchase) - list * qty);
+      order.discountTotalAtPurchase = Math.max(0, Number(order.subtotalAtPurchase) - Number(order.totalAtPurchase));
+    }
+
     order.items.splice(itemIndex, 1);
-    
+
     order.shippingHistory.push({
       status: `Item cancelled: ${cancelledItem.name}`,
       date: new Date()
     });
 
-    // Eğer ürün kalmadıysa veya kritik bir iptalse durumu güncelliyoruz
-    if (order.items.length === 0) {
-      order.shippingStatus = "Cancelled";
-    } else {
-      // Ürün iptal edildiğinde ana durumun "Cancelled" gözükmesini istiyorsanız:
-      order.shippingStatus = "Cancelled"; 
-    }
+    order.shippingStatus = "Cancelled";
+    order.isCompleted = false;
 
     await order.save();
     res.json({ message: "Item successfully cancelled.", order });
@@ -252,7 +351,7 @@ router.get("/track/:trackingCode", async (req, res) => {
       shippingStatus: order.shippingStatus,
       shippingHistory: order.shippingHistory,
       items: order.items,
-      totalAmount: order.totalAmount,
+      totalAmount: order.totalAtPurchase ?? order.totalAmount,
       createdAt: order.createdAt,
     });
   } catch (err) {
@@ -266,12 +365,12 @@ router.get("/admin/deliveries", requireRole("productManager"), async (_req, res)
     const orders = await Order.find({}).populate("user", "name email").lean().sort({ createdAt: -1 });
 
     const deliveryList = orders.flatMap((order) =>
-      order.items.map((item) => ({
+      (order.items || []).map((item) => ({
         deliveryId: order._id,
         customerName: order.user?.name || order.user?.email || "Unknown",
         productName: item.name,
         quantity: item.quantity,
-        totalPrice: item.price * item.quantity,
+        totalPrice: (item.unitPriceAtPurchase ?? item.price) * item.quantity,
         deliveryAddress: order.deliveryAddress || "Not specified",
         shippingStatus: order.shippingStatus,
         trackingCode: order.trackingCode,
