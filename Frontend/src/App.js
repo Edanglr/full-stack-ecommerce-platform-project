@@ -30,13 +30,15 @@ import AdminLiveChatPage from "./components/AdminLiveChatPage";
 import AdminProductManagerPage from "./components/AdminProductManagerPage";
 import AdminOrdersPage from "./components/AdminOrdersPage";
 
+// ✅ from version-2
+import AdminReturnsPage from "./components/AdminReturnsPage";
+import AdminDeliveriesPage from "./components/AdminDeliveriesPage";
+
 import InvoicePage from "./components/InvoicePage";
 import PaymentPage from "./components/PaymentPage";
 
 // 🔴 LIVE CHAT
 import CustomerChat from "./components/chat/CustomerChat";
-
-// ✅ HATALI SATIR BURADAN SİLİNDİ (app.use...)
 
 console.log("APP ROUTES LOADED!");
 
@@ -154,12 +156,32 @@ function App() {
               }
             />
 
-            {/* ADMIN: Sales Manager */}
+            {/* ✅ from version-2 */}
+            <Route
+              path="/admin/deliveries"
+              element={
+                <RequireRole user={user} roles={["productManager"]}>
+                  <AdminDeliveriesPage />
+                </RequireRole>
+              }
+            />
+
+            {/* ADMIN: Sales Manager (+ Product Manager invoice/order visibility için) */}
             <Route
               path="/admin/orders"
               element={
                 <RequireRole user={user} roles={["salesManager", "productManager"]}>
                   <AdminOrdersPage />
+                </RequireRole>
+              }
+            />
+
+            {/* ✅ from version-2 */}
+            <Route
+              path="/admin/returns"
+              element={
+                <RequireRole user={user} roles={["salesManager"]}>
+                  <AdminReturnsPage />
                 </RequireRole>
               }
             />
