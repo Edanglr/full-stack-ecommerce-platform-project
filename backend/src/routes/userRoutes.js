@@ -2,7 +2,7 @@
 
 import express from "express";
 import User from "../models/User.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 import bcrypt from "bcryptjs";
 
 const router = express.Router();
@@ -27,15 +27,13 @@ router.get("/cart/:userId", requireAuth, requireRole("supportAgent", "productMan
       .select("cart")
       .populate({
         path: "cart.items.productId",
-        select: "name price imageUrl image"
+        select: "name price image imageUrl" 
       });
 
     if (!user) return res.status(404).json({ message: "User not found" });
-
-    // Sepet verisini döndür (eğer boşsa boş dizi gönder)
     res.json(user.cart || { items: [] });
   } catch (err) {
-    console.error("Fetch user cart error:", err);
+    console.error("Cart fetch error:", err);
     res.status(500).json({ message: "Error fetching user cart" });
   }
 });
@@ -57,10 +55,7 @@ router.put("/update", requireAuth, async (req, res) => {
   }
 });
 
-/**
- * PUT /api/users/change-email
- * Change account email (requires password)
- */
+
 router.put("/change-email", requireAuth, async (req, res) => {
   try {
     const { newEmail, password } = req.body;
