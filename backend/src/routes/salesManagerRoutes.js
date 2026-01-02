@@ -1,9 +1,11 @@
+// backend/src/routes/salesManagerRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import Favorite from "../models/Favorite.js";
 import User from "../models/User.js";
 import DiscountCampaign from "../models/DiscountCampaign.js";
+import ReturnRequest from "../models/returnModel.js";
 import { requireSalesManager } from "../middleware/auth.js";
 import { sendDiscountEmail } from "../utils/email.js";
 
@@ -355,16 +357,57 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
       .populate("items.productId", "cost price basePrice")
       .sort({ createdAt: 1 });
 
+    const { fromDate, toDate } = parseDateRange(from, to);
+
+    const timeCond = {};
+    if (fromDate) timeCond.$gte = fromDate;
+    if (toDate) timeCond.$lte = toDate;
+
+    const returnTimeFilter =
+      Object.keys(timeCond).length > 0
+        ? {
+            $or: [
+              { refundedAt: timeCond },
+              { processedAt: timeCond },
+              { updatedAt: timeCond },
+              { createdAt: timeCond },
+            ],
+          }
+        : {};
+
+    const returns = await ReturnRequest.find({
+      status: { $in: ["Refunded", "Completed"] },
+      ...returnTimeFilter,
+    })
+      .select("refundedAmount refundedAt processedAt updatedAt createdAt")
+      .lean();
+
     let revenue = 0;
     let cost = 0;
+    let refunds = 0;
 
     const byDay = new Map();
+    const refundByDay = new Map();
+
+    for (const r of returns || []) {
+      const eventDate = r.refundedAt || r.processedAt || r.updatedAt || r.createdAt;
+      if (!eventDate) continue;
+
+      const dayKey = new Date(eventDate).toISOString().slice(0, 10);
+      const amt = Number(r.refundedAmount || 0);
+
+      refunds += amt;
+      refundByDay.set(dayKey, (refundByDay.get(dayKey) || 0) + amt);
+    }
 
     for (const o of orders) {
+      const ship = String(o.shippingStatus || "").toLowerCase();
+      if (ship === "cancelled") continue;
+
       const dayKey = new Date(o.createdAt).toISOString().slice(0, 10);
 
       if (!byDay.has(dayKey)) {
-        byDay.set(dayKey, { revenue: 0, cost: 0 });
+        byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
       }
 
       for (const it of o.items || []) {
@@ -392,21 +435,35 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
       }
     }
 
+    for (const [dayKey, amt] of refundByDay.entries()) {
+      if (!byDay.has(dayKey)) {
+        byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
+      }
+      byDay.get(dayKey).refunds += amt;
+    }
+
     const series = [...byDay.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, v]) => ({
-        date,
-        revenue: round2(v.revenue),
-        cost: round2(v.cost),
-        profit: round2(v.revenue - v.cost),
-      }));
+      .map(([date, v]) => {
+        const netRevenue = (Number(v.revenue) || 0) - (Number(v.refunds) || 0);
+        return {
+          date,
+          revenue: round2(netRevenue),
+          cost: round2(v.cost),
+          refunds: round2(v.refunds),
+          profit: round2(netRevenue - (Number(v.cost) || 0)),
+        };
+      });
+
+    const netRevenueTotal = revenue - refunds;
 
     return res.json({
       from: from || "1970-01-01",
       to: to || new Date().toISOString().slice(0, 10),
-      revenue: round2(revenue),
+      revenue: round2(netRevenueTotal),
       cost: round2(cost),
-      profit: round2(revenue - cost),
+      refunds: round2(refunds),
+      profit: round2(netRevenueTotal - cost),
       series,
     });
   } catch (e) {
