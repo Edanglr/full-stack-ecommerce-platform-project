@@ -43,8 +43,10 @@ function badgeStyle(status) {
   const s = String(status || "").toLowerCase();
   if (s === "requested") return { background: "#fff3cd", color: "#856404" };
   if (s === "approved") return { background: "#d4edda", color: "#155724" };
+  if (s === "received") return { background: "#e2e3ff", color: "#2c2f7a" };
+  if (s === "refunded") return { background: "#d1ecf1", color: "#0c5460" };
   if (s === "rejected") return { background: "#f8d7da", color: "#721c24" };
-  if (s === "completed") return { background: "#d1ecf1", color: "#0c5460" };
+  if (s === "completed") return { background: "#e6f4ea", color: "#137333" };
   return { background: "#eee", color: "#111" };
 }
 
@@ -55,11 +57,9 @@ export default function AdminReturnsPage() {
 
   const [returns, setReturns] = useState([]);
 
-  // filters
-  const [statusFilter, setStatusFilter] = useState("all"); // all | Requested | Approved | Rejected | Completed
+  const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
 
-  // modal
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
 
@@ -153,6 +153,69 @@ export default function AdminReturnsPage() {
     }
   };
 
+  const markReceived = async (returnId) => {
+    try {
+      setErr("");
+      setMsg("");
+      const ok = window.confirm("Mark this return as received?");
+      if (!ok) return;
+
+      setLoading(true);
+      const data = await apiFetch(`/api/returns/${returnId}/received`, {
+        method: "PATCH",
+      });
+
+      setMsg(data?.message || "Marked as received.");
+      await loadReturns();
+    } catch (e) {
+      setErr(e.message || "Receive failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markRefunded = async (returnId) => {
+    try {
+      setErr("");
+      setMsg("");
+      const ok = window.confirm("Mark this return as refunded?");
+      if (!ok) return;
+
+      setLoading(true);
+      const data = await apiFetch(`/api/returns/${returnId}/refund`, {
+        method: "PATCH",
+      });
+
+      setMsg(data?.message || "Marked as refunded.");
+      await loadReturns();
+    } catch (e) {
+      setErr(e.message || "Refund failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markCompleted = async (returnId) => {
+    try {
+      setErr("");
+      setMsg("");
+      const ok = window.confirm("Complete this return process?");
+      if (!ok) return;
+
+      setLoading(true);
+      const data = await apiFetch(`/api/returns/${returnId}/complete`, {
+        method: "PATCH",
+      });
+
+      setMsg(data?.message || "Marked as completed.");
+      await loadReturns();
+    } catch (e) {
+      setErr(e.message || "Complete failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ padding: "92px 18px 22px 18px", maxWidth: 1200, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -173,7 +236,6 @@ export default function AdminReturnsPage() {
         </button>
       </div>
 
-      {/* Messages */}
       {err && (
         <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "#f8d7da", color: "#721c24" }}>
           {err}
@@ -185,7 +247,6 @@ export default function AdminReturnsPage() {
         </div>
       )}
 
-      {/* Filters */}
       <div
         style={{
           marginTop: 14,
@@ -209,6 +270,8 @@ export default function AdminReturnsPage() {
             <option value="all">All</option>
             <option value="Requested">Requested</option>
             <option value="Approved">Approved</option>
+            <option value="Received">Received</option>
+            <option value="Refunded">Refunded</option>
             <option value="Rejected">Rejected</option>
             <option value="Completed">Completed</option>
           </select>
@@ -229,7 +292,6 @@ export default function AdminReturnsPage() {
         </div>
       </div>
 
-      {/* Table */}
       <div style={{ marginTop: 12, background: "white", border: "1px solid #eee", borderRadius: 10, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
           <thead>
@@ -256,6 +318,9 @@ export default function AdminReturnsPage() {
             {filtered.map((r) => {
               const canApprove = String(r.status) === "Requested";
               const canReject = String(r.status) === "Requested";
+              const canReceive = String(r.status) === "Approved";
+              const canRefund = String(r.status) === "Received";
+              const canComplete = String(r.status) === "Refunded";
 
               return (
                 <tr key={r._id} style={{ borderBottom: "1px solid #f2f2f2" }}>
@@ -285,7 +350,9 @@ export default function AdminReturnsPage() {
                     <div style={{ opacity: 0.8 }}>{r.user?.email || ""}</div>
                   </td>
 
-                  <td style={{ padding: "10px 10px", fontSize: 13 }}>{r.order?._id ? String(r.order._id).slice(-8) : ""}</td>
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>
+                    {r.order?._id ? String(r.order._id).slice(-8) : ""}
+                  </td>
 
                   <td style={{ padding: "10px 10px", fontSize: 13 }}>
                     <div style={{ fontWeight: 700 }}>{r.product?.name || "Product"}</div>
@@ -346,6 +413,54 @@ export default function AdminReturnsPage() {
                       >
                         Reject
                       </button>
+
+                      <button
+                        disabled={!canReceive || loading}
+                        onClick={() => markReceived(r._id)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ccc",
+                          background: "white",
+                          color: canReceive ? "#111" : "#999",
+                          cursor: canReceive && !loading ? "pointer" : "not-allowed",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Received
+                      </button>
+
+                      <button
+                        disabled={!canRefund || loading}
+                        onClick={() => markRefunded(r._id)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ccc",
+                          background: "white",
+                          color: canRefund ? "#111" : "#999",
+                          cursor: canRefund && !loading ? "pointer" : "not-allowed",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Refund
+                      </button>
+
+                      <button
+                        disabled={!canComplete || loading}
+                        onClick={() => markCompleted(r._id)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ccc",
+                          background: "white",
+                          color: canComplete ? "#111" : "#999",
+                          cursor: canComplete && !loading ? "pointer" : "not-allowed",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Complete
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -363,7 +478,6 @@ export default function AdminReturnsPage() {
         </table>
       </div>
 
-      {/* Modal */}
       {open && active && (
         <div
           onClick={() => setOpen(false)}
@@ -436,6 +550,7 @@ export default function AdminReturnsPage() {
               >
                 Approve Refund
               </button>
+
               <button
                 disabled={String(active.status) !== "Requested" || loading}
                 onClick={() => rejectReturn(active._id)}
@@ -449,6 +564,51 @@ export default function AdminReturnsPage() {
                 }}
               >
                 Reject
+              </button>
+
+              <button
+                disabled={String(active.status) !== "Approved" || loading}
+                onClick={() => markReceived(active._id)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ccc",
+                  background: "white",
+                  fontWeight: 800,
+                  cursor: String(active.status) === "Approved" && !loading ? "pointer" : "not-allowed",
+                }}
+              >
+                Mark Received
+              </button>
+
+              <button
+                disabled={String(active.status) !== "Received" || loading}
+                onClick={() => markRefunded(active._id)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ccc",
+                  background: "white",
+                  fontWeight: 800,
+                  cursor: String(active.status) === "Received" && !loading ? "pointer" : "not-allowed",
+                }}
+              >
+                Mark Refunded
+              </button>
+
+              <button
+                disabled={String(active.status) !== "Refunded" || loading}
+                onClick={() => markCompleted(active._id)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ccc",
+                  background: "white",
+                  fontWeight: 800,
+                  cursor: String(active.status) === "Refunded" && !loading ? "pointer" : "not-allowed",
+                }}
+              >
+                Mark Completed
               </button>
             </div>
           </div>
