@@ -1,9 +1,8 @@
-// src/components/CategoryPage.js
+// Frontend/src/components/CategoryPage.js
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Container, Row, Col, Card, Button } from "react-bootstrap";
 
-// Hem eski stock hem yeni sizes yapısıyla çalışsın
 function getTotalStock(product) {
   if (product.sizes) {
     const sizeKeys = ["XS", "S", "M", "L", "XL"];
@@ -26,9 +25,8 @@ function CategoryPage() {
   const [sortBy, setSortBy] = useState("newest");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [ratingSummary, setRatingSummary] = useState({}); // {productId: {averageRating, ratingCount}}
+  const [ratingSummary, setRatingSummary] = useState({});
 
-  // ÜRÜNLERİ ÇEK (kategoriye göre, sıralamayı frontend yapacağız)
   useEffect(() => {
     const fetchProducts = async () => {
       try {
@@ -63,9 +61,8 @@ function CategoryPage() {
     };
 
     fetchProducts();
-  }, [categoryName]); // sortBy yok → sıralamayı frontend’te yapacağız
+  }, [categoryName]);
 
-  // HER ÜRÜN İÇİN RATING ÖZETİNİ ÇEK
   useEffect(() => {
     const fetchRatingsForProducts = async () => {
       try {
@@ -109,7 +106,6 @@ function CategoryPage() {
     }
   }, [products]);
 
-  // KATEGORİ İÇİN FRONTEND SIRALAMA (ProductGrid ile aynı mantık)
   const sortedProducts = [...products].sort((a, b) => {
     switch (sortBy) {
       case "priceAsc":
@@ -189,11 +185,30 @@ function CategoryPage() {
         </Button>
       </div>
 
-      {loading && <p className="text-center">Loading products...</p>}
+      {loading && (
+        <div style={{ textAlign: "center", padding: "40px" }}>
+          <div className="spinner-border" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p style={{ marginTop: "10px" }}>Loading products...</p>
+        </div>
+      )}
+
       {error && (
-        <p className="text-center" style={{ color: "red" }}>
-          {error}
-        </p>
+        <div
+          style={{
+            padding: "20px",
+            margin: "0 auto 20px",
+            maxWidth: "600px",
+            backgroundColor: "#fee",
+            border: "1px solid #fcc",
+            borderRadius: "8px",
+            color: "#c33",
+            textAlign: "center",
+          }}
+        >
+          <strong>Error:</strong> {error}
+        </div>
       )}
 
       <Row>
@@ -210,27 +225,74 @@ function CategoryPage() {
               ? summary.ratingCount
               : product.ratingCount || 0;
 
+          // ✅ TASK 2: Discount display
+          const hasDiscount =
+            typeof product.discountRate === "number" && product.discountRate > 0;
+          const basePrice = product.basePrice || product.price;
+          const currentPrice = product.price;
+
           return (
             <Col key={product._id} md={4} sm={6} xs={12} className="mb-4">
               <Card
                 style={{ cursor: "pointer", height: "100%" }}
                 onClick={() => handleCardClick(product._id)}
               >
-                <Card.Img
-                  variant="top"
-                  src={product.imageUrl}
-                  alt={product.name}
-                  onError={(e) => {
-                    e.target.src =
-                      "https://via.placeholder.com/300?text=No+Image";
-                  }}
-                />
+                {/* ✅ Discount badge on image */}
+                <div style={{ position: "relative" }}>
+                  <Card.Img
+                    variant="top"
+                    src={product.imageUrl}
+                    alt={product.name}
+                    onError={(e) => {
+                      e.target.src =
+                        "https://via.placeholder.com/300?text=No+Image";
+                    }}
+                  />
+                  {hasDiscount && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "10px",
+                        right: "10px",
+                        backgroundColor: "#e74c3c",
+                        color: "white",
+                        padding: "6px 10px",
+                        borderRadius: "4px",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {Math.round(product.discountRate * 100)}% OFF
+                    </span>
+                  )}
+                </div>
 
                 <Card.Body className="d-flex flex-column">
                   <Card.Title>{product.name}</Card.Title>
-                  <Card.Text>{product.price}₺</Card.Text>
 
-                  {/* Rating satırı */}
+                  {/* ✅ TASK 2: Price with discount */}
+                  <Card.Text>
+                    {hasDiscount ? (
+                      <>
+                        <span style={{ color: "#e74c3c", fontWeight: "bold" }}>
+                          {currentPrice}₺
+                        </span>
+                        <span
+                          style={{
+                            textDecoration: "line-through",
+                            color: "#999",
+                            marginLeft: "8px",
+                            fontSize: "14px",
+                          }}
+                        >
+                          {basePrice}₺
+                        </span>
+                      </>
+                    ) : (
+                      <>{currentPrice}₺</>
+                    )}
+                  </Card.Text>
+
                   {ratingCount > 0 && (
                     <Card.Text style={{ fontSize: "0.9rem" }}>
                       ⭐ {averageRating.toFixed(1)} ({ratingCount})
@@ -265,9 +327,20 @@ function CategoryPage() {
         })}
 
         {!loading && sortedProducts.length === 0 && (
-          <p className="text-center mt-4">
-            No products found in this category.
-          </p>
+          <div
+            style={{
+              padding: "40px",
+              textAlign: "center",
+              backgroundColor: "#f9f9f9",
+              borderRadius: "8px",
+              border: "1px solid #e5e5e5",
+              margin: "20px",
+            }}
+          >
+            <p style={{ fontSize: "18px", color: "#666" }}>
+              No products found in this category.
+            </p>
+          </div>
         )}
       </Row>
     </Container>
