@@ -1,4 +1,4 @@
-// backend/src/routes/orderRoutes.js
+ // backend/src/routes/orderRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
@@ -9,7 +9,6 @@ import { requireAuth, requireManager, requireRole } from "../middleware/auth.js"
 import { mockBankCharge } from "../utils/mockBank.js";
 import { generateInvoicePdf } from "../utils/invoice.js";
 import { sendInvoiceEmail } from "../utils/email.js";
-
 
 const router = express.Router();
 
@@ -23,7 +22,7 @@ router.post("/", requireAuth, async (req, res) => {
         .json({ message: "No items provided in the order." });
     }
 
-
+    // 1) Stok kontrolü
     for (const item of items) {
       const product = await Product.findById(item.productId);
 
@@ -50,7 +49,7 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-
+    // 2) Stok düşme
     for (const item of items) {
       const sizeKey = item.size;
       await Product.findByIdAndUpdate(item.productId, {
@@ -58,13 +57,13 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-
+    // 3) Toplam tutar
     const totalAmount = items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
 
-
+    // 4) Mock bankadan ödeme al
     const paymentResult = await mockBankCharge({
       amount: totalAmount,
       user: req.user,
@@ -77,10 +76,10 @@ router.post("/", requireAuth, async (req, res) => {
         .json({ message: "Payment failed. Please try again." });
     }
 
-  
+    // 5) Takip kodu
     const trackingCode = generateTrackingCode();
 
-
+    // 6) Siparişi kaydet
     const newOrder = await Order.create({
       user: req.user.id,
       items,
@@ -102,6 +101,7 @@ router.post("/", requireAuth, async (req, res) => {
       isCompleted: false,
     });
 
+    // Kullanıcı bilgileri (invoice + mail için)
     const user = await User.findById(req.user.id).lean();
 
     if (!user) {
@@ -111,7 +111,7 @@ router.post("/", requireAuth, async (req, res) => {
       );
     } else {
       try {
-  
+        // 7) Invoice PDF üret
         const { invoiceNumber, pdfPath } = await generateInvoicePdf({
           order: newOrder,
           user,
@@ -121,7 +121,7 @@ router.post("/", requireAuth, async (req, res) => {
         newOrder.invoicePdfPath = pdfPath;
         await newOrder.save();
 
- 
+        // 8) Invoice email gönder
         if (user.email) {
           try {
             await sendInvoiceEmail({ to: user.email, pdfPath });
@@ -146,7 +146,8 @@ router.post("/", requireAuth, async (req, res) => {
       user: req.user.id,
     });
 
-    const name =
+    // Shipping address bilgisi (frontend'e gidecek)
+ const name =
       (user &&
         (user.name ||
           `${user.firstName || ""} ${user.lastName || ""}`.trim())) ||
@@ -272,6 +273,48 @@ router.get("/:id/invoice", requireAuth, async (req, res) => {
   }
 });
 
+// ✅ TASK 3: ORDER CANCELLATION
+router.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    // Sadece kendi siparişini iptal edebilir
+    if (order.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized to cancel this order." });
+    }
+
+    // Sadece Processing status'teki siparişler iptal edilebilir
+    if (order.shippingStatus !== "Processing") {
+      return res.status(400).json({ 
+        message: `Cannot cancel order. Current status: ${order.shippingStatus}. Only orders in "Processing" status can be cancelled.` 
+      });
+    }
+
+    // Stokları geri yükle
+    for (const item of order.items) {
+      const sizeKey = item.size;
+      await Product.findByIdAndUpdate(item.productId, {
+        $inc: { [`sizes.${sizeKey}`]: item.quantity },
+      });
+    }
+
+    // Siparişi sil
+    await Order.findByIdAndDelete(req.params.id);
+
+    return res.json({
+      message: "Order cancelled successfully. Stock has been restored.",
+    });
+  } catch (err) {
+    console.error("DELETE /api/orders/:id error:", err);
+    return res.status(500).json({ message: "Error while cancelling order." });
+  }
+});
+
+// ✅ sadece productManager (manager legacy zaten geçer)
 router.put("/:id/status", requireRole("productManager"), async (req, res) => {
   try {
     const { status } = req.body;
@@ -292,6 +335,7 @@ router.put("/:id/status", requireRole("productManager"), async (req, res) => {
       date: new Date(),
     });
 
+    // Delivered ise tamamlandı olarak işaretle
     order.isCompleted = status === "Delivered";
 
     await order.save();
@@ -334,7 +378,10 @@ router.get("/track/:trackingCode", async (req, res) => {
   }
 });
 
-
+/**
+ * GET /api/orders/admin/deliveries
+ * -> product manager / delivery department view
+ */
 router.get("/admin/deliveries", requireRole("productManager"), async (_req, res) => {
   try {
     const orders = await Order.find({})
@@ -368,6 +415,7 @@ router.get("/admin/deliveries", requireRole("productManager"), async (_req, res)
   }
 });
 
+// ✅ invoices: salesManager + productManager (manager legacy geçer)
 router.get("/admin/invoices", requireRole("salesManager", "productManager"), async (_req, res) => {
   try {
     const orders = await Order.find({})
@@ -395,7 +443,6 @@ router.get("/admin/invoices", requireRole("salesManager", "productManager"), asy
       .json({ message: "Error while fetching invoices." });
   }
 });
-
 
 router.post("/:orderId/cancel-item", requireRole("supportAgent", "productManager"), async (req, res) => {
   try {
@@ -464,6 +511,10 @@ router.post("/:orderId/cancel-item", requireRole("supportAgent", "productManager
     res.status(500).json({ message: "Internal server error: " + err.message });
   }
 });
+/**
+ * GET /api/orders/by-user/:userId
+ * -> Support: selected customer orders
+ */
 
 router.get("/by-user/:userId", requireRole("supportAgent", "salesManager", "productManager"),
   async (req, res) => {
