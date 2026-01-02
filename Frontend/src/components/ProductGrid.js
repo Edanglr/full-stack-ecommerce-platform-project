@@ -1,9 +1,8 @@
-// src/components/ProductGrid.js
+// Frontend/src/components/ProductGrid.js
 import React, { useEffect, useState } from "react";
 import { Container, Row, Col, Card, Button } from "react-bootstrap";
 import { Link } from "react-router-dom";
 
-// Hem eski stock hem yeni sizes yapısıyla çalışsın
 function getTotalStock(product) {
   if (product.sizes) {
     const sizeKeys = ["XS", "S", "M", "L", "XL"];
@@ -23,7 +22,7 @@ function ProductGrid({ searchTerm }) {
   const [sortBy, setSortBy] = useState("newest");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [ratingSummary, setRatingSummary] = useState({}); // {productId: {averageRating, ratingCount}}
+  const [ratingSummary, setRatingSummary] = useState({});
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -48,7 +47,6 @@ function ProductGrid({ searchTerm }) {
     fetchProducts();
   }, []);
 
-  // HER ÜRÜN İÇİN RATING ÖZETİ
   useEffect(() => {
     const fetchRatingsForProducts = async () => {
       try {
@@ -176,11 +174,30 @@ function ProductGrid({ searchTerm }) {
         </Button>
       </div>
 
-      {loading && <p className="text-center">Loading products...</p>}
+      {loading && (
+        <div style={{ textAlign: "center", padding: "40px" }}>
+          <div className="spinner-border" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p style={{ marginTop: "10px" }}>Loading products...</p>
+        </div>
+      )}
+
       {error && (
-        <p className="text-center" style={{ color: "red" }}>
-          {error}
-        </p>
+        <div
+          style={{
+            padding: "20px",
+            margin: "0 auto 20px",
+            maxWidth: "600px",
+            backgroundColor: "#fee",
+            border: "1px solid #fcc",
+            borderRadius: "8px",
+            color: "#c33",
+            textAlign: "center",
+          }}
+        >
+          <strong>Error:</strong> {error}
+        </div>
       )}
 
       <Row>
@@ -197,6 +214,21 @@ function ProductGrid({ searchTerm }) {
               ? summary.ratingCount
               : product.ratingCount || 0;
 
+          const hasDiscount = Number(product.discountRate) > 0;
+          const currentPrice = product.price;
+
+          // ✅ BASE PRICE HER DURUMDA GARANTİLİ
+          let basePrice = null;
+          if (hasDiscount) {
+            if (product.basePrice) {
+              basePrice = Number(product.basePrice).toFixed(2);
+            } else {
+              basePrice = (
+                currentPrice / (1 - Number(product.discountRate))
+              ).toFixed(2);
+            }
+          }
+
           return (
             <Col key={product._id} md={4} sm={6} xs={12} className="mb-4">
               <Card className="h-100">
@@ -204,15 +236,35 @@ function ProductGrid({ searchTerm }) {
                   to={`/product/${product._id}`}
                   style={{ textDecoration: "none", color: "inherit" }}
                 >
-                  <Card.Img
-                    variant="top"
-                    src={product.imageUrl}
-                    alt={product.name}
-                    onError={(e) => {
-                      e.target.src =
-                        "https://via.placeholder.com/300?text=No+Image";
-                    }}
-                  />
+                  <div style={{ position: "relative" }}>
+                    <Card.Img
+                      variant="top"
+                      src={product.imageUrl}
+                      alt={product.name}
+                      onError={(e) => {
+                        e.target.src =
+                          "https://via.placeholder.com/300?text=No+Image";
+                      }}
+                    />
+
+                    {hasDiscount && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "10px",
+                          right: "10px",
+                          backgroundColor: "#e74c3c",
+                          color: "white",
+                          padding: "6px 10px",
+                          borderRadius: "4px",
+                          fontSize: "14px",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {Math.round(product.discountRate * 100)}% OFF
+                      </span>
+                    )}
+                  </div>
                 </Link>
 
                 <Card.Body className="d-flex flex-column">
@@ -223,9 +275,28 @@ function ProductGrid({ searchTerm }) {
                     <Card.Title>{product.name}</Card.Title>
                   </Link>
 
-                  <Card.Text>{product.price} TL</Card.Text>
+                  <Card.Text>
+                    {hasDiscount ? (
+                      <>
+                        <span style={{ color: "#e74c3c", fontWeight: "bold" }}>
+                          {currentPrice} TL
+                        </span>
+                        <span
+                          style={{
+                            textDecoration: "line-through",
+                            color: "#999",
+                            marginLeft: "8px",
+                            fontSize: "14px",
+                          }}
+                        >
+                          {basePrice} TL
+                        </span>
+                      </>
+                    ) : (
+                      <>{currentPrice} TL</>
+                    )}
+                  </Card.Text>
 
-                  {/* Rating satırı */}
                   {ratingCount > 0 && (
                     <Card.Text style={{ fontSize: "0.9rem" }}>
                       ⭐ {averageRating.toFixed(1)} ({ratingCount})
@@ -255,10 +326,6 @@ function ProductGrid({ searchTerm }) {
             </Col>
           );
         })}
-
-        {!loading && filteredAndSortedProducts.length === 0 && (
-          <p className="text-center mt-4">No products found.</p>
-        )}
       </Row>
     </Container>
   );
