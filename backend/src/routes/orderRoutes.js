@@ -24,18 +24,13 @@ router.post("/", requireAuth, async (req, res) => {
 
     const productById = new Map();
 
-    // Stock check and product validation.
+    // Stock check.
     for (const item of items) {
       const product = await Product.findById(item.productId);
-      if (!product) {
-        return res.status(404).json({ message: `Product not found: ${item.productId}` });
-      }
+      if (!product) return res.status(404).json({ message: `Product not found: ${item.productId}` });
+      if (!item.size) return res.status(400).json({ message: `Size is required for product ${product.name}` });
 
       productById.set(String(item.productId), product);
-
-      if (!item.size) {
-        return res.status(400).json({ message: `Size is required for product ${product.name}` });
-      }
 
       const sizeKey = item.size;
       const sizes = product.sizes || {};
@@ -53,8 +48,11 @@ router.post("/", requireAuth, async (req, res) => {
       const product = productById.get(String(item.productId));
 
       const qty = Number(item.quantity) || 0;
+
       const listPrice =
-        product.basePrice != null ? Number(product.basePrice) : Number(product.price);
+        product.basePrice != null
+          ? Number(product.basePrice)
+          : (product.originalPrice != null ? Number(product.originalPrice) : Number(product.price));
 
       const discountRate = Number(product.discountRate) || 0; // 0..1
       const unitPrice = round2(Math.max(0, listPrice * (1 - discountRate)));
@@ -67,7 +65,7 @@ router.post("/", requireAuth, async (req, res) => {
         size: item.size || "",
         quantity: qty,
 
-        // Kept for compatibility; set to server-calculated effective price.
+        // Kept for compatibility; always set from server effective price.
         price: unitPrice,
 
         imageUrl: item.imageUrl || product.imageUrl || "",
@@ -80,7 +78,7 @@ router.post("/", requireAuth, async (req, res) => {
       };
     });
 
-    // Stock decrease using normalized items.
+    // Stock decrease.
     for (const item of normalizedItems) {
       const sizeKey = item.size;
       await Product.findByIdAndUpdate(item.productId, {
@@ -113,10 +111,10 @@ router.post("/", requireAuth, async (req, res) => {
     const profitAtPurchase =
       normalizedItems.some((it) => it.unitCostAtPurchase == null) ? null : round2(profitRaw);
 
-    // Keep old totalAmount in sync for existing UI.
+    // Keep old totalAmount consistent for existing UI.
     const totalAmount = totalAtPurchase;
 
-    // Mock payment
+    // Mock bankadan ödeme al
     const paymentResult = await mockBankCharge({ amount: totalAmount, user: req.user });
     if (!paymentResult || !paymentResult.success) {
       return res.status(402).json({ message: "Payment failed. Please try again." });
@@ -155,14 +153,7 @@ router.post("/", requireAuth, async (req, res) => {
         newOrder.invoiceNumber = invoiceNumber;
         newOrder.invoicePdfPath = pdfPath;
         await newOrder.save();
-
-        if (user.email) {
-          try {
-            await sendInvoiceEmail({ to: user.email, pdfPath });
-          } catch (emailErr) {
-            console.error("EMAIL ERROR:", emailErr);
-          }
-        }
+        if (user.email) await sendInvoiceEmail({ to: user.email, pdfPath });
       } catch (invoiceErr) {
         console.error("INVOICE ERROR:", invoiceErr);
       }
@@ -174,7 +165,7 @@ router.post("/", requireAuth, async (req, res) => {
       trackingCode: newOrder.trackingCode,
       invoice: {
         invoiceNumber: newOrder.invoiceNumber || "",
-        totalAmount: newOrder.totalAmount,
+        totalAmount: newOrder.totalAtPurchase ?? newOrder.totalAmount,
         createdAt: newOrder.createdAt,
         items: newOrder.items,
         trackingCode: newOrder.trackingCode,
@@ -184,10 +175,6 @@ router.post("/", requireAuth, async (req, res) => {
           city: user?.city || "",
           postalCode: user?.postalCode || user?.zip || "",
         },
-        subtotalAtPurchase: newOrder.subtotalAtPurchase,
-        discountTotalAtPurchase: newOrder.discountTotalAtPurchase,
-        totalAtPurchase: newOrder.totalAtPurchase,
-        profitAtPurchase: newOrder.profitAtPurchase,
       },
     });
   } catch (err) {
@@ -215,18 +202,11 @@ router.get("/my", requireAuth, async (req, res) => {
       items: (order.items || []).map((i) => ({
         name: i.productId?.name || i.name || "Product",
         productId: i.productId?._id || i.productId,
-        imageUrl:
-          i.productId?.imageUrl ||
-          i.productId?.image ||
-          i.imageUrl ||
-          "https://via.placeholder.com/80?text=No+Image",
+        imageUrl: i.productId?.imageUrl || i.productId?.image || i.imageUrl || "https://via.placeholder.com/80?text=No+Image",
         price: i.unitPriceAtPurchase ?? i.price,
         quantity: i.quantity,
         size: i.size,
       })),
-      subtotalAtPurchase: order.subtotalAtPurchase ?? null,
-      discountTotalAtPurchase: order.discountTotalAtPurchase ?? 0,
-      profitAtPurchase: order.profitAtPurchase ?? null,
     }));
 
     res.json(formatted);
@@ -257,6 +237,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
     order.shippingStatus = "Cancelled";
     order.shippingHistory.push({ status: "Order cancelled by customer", date: new Date() });
+    order.isCompleted = false;
     await order.save();
 
     return res.json({ message: "Order cancelled successfully. Stock has been restored." });
