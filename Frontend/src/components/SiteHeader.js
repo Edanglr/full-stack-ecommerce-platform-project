@@ -106,9 +106,15 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
 
             {/* SALES MANAGER LINKS */}
             {user && isSalesManager && (
-              <Nav.Link as={Link} to="/admin/orders" className="ms-3">
-                Manage Orders
-              </Nav.Link>
+              <>
+                <Nav.Link as={Link} to="/admin/orders" className="ms-3">
+                  Manage Orders
+                </Nav.Link>
+
+                <Nav.Link as={Link} to="/admin/returns" className="ms-3">
+                  Manage Returns
+                </Nav.Link>
+              </>
             )}
 
             {/* SUPPORT AGENT LINKS */}
@@ -121,7 +127,7 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
             {/* TRACK ORDER */}
             <Nav.Link
               as={Link}
-              to="/track"
+              to={user && isProductManager ? "/admin/deliveries" : "/track"}
               className="ms-3"
               style={{ fontWeight: 600 }}
             >
@@ -204,6 +210,22 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                       zIndex: 999,
                     }}
                   >
+                    {/* user header */}
+                    <div
+                      style={{
+                        padding: "10px 15px",
+                        borderBottom: "1px solid #eee",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: "14px" }}>
+                        {(user && (user.name || user.fullName)) || "User"}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#666" }}>
+                        {(user && user.email) || ""}
+                      </div>
+                    </div>
+
                     <button
                       onClick={() => navigate("/profile")}
                       style={{
@@ -227,7 +249,59 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                         cursor: "pointer",
                       }}
                     >
-                      My Orders
+                      Orders
+                    </button>
+
+                    <button
+                      onClick={() => navigate("/returns")}
+                      style={{
+                        padding: "10px 15px",
+                        background: "none",
+                        border: "none",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Returns
+                    </button>
+
+                    <button
+                      onClick={() => navigate("/favorites")}
+                      style={{
+                        padding: "10px 15px",
+                        background: "none",
+                        border: "none",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Favorites
+                    </button>
+
+                    <button
+                      onClick={() => navigate("/payment-methods")}
+                      style={{
+                        padding: "10px 15px",
+                        background: "none",
+                        border: "none",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Payment Methods
+                    </button>
+
+                    <button
+                      onClick={() => navigate("/settings")}
+                      style={{
+                        padding: "10px 15px",
+                        background: "none",
+                        border: "none",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Settings
                     </button>
 
                     <button
