@@ -1,4 +1,3 @@
-// backend/src/models/Order.js
 import mongoose from "mongoose";
 
 const orderItemSchema = new mongoose.Schema({
@@ -10,11 +9,25 @@ const orderItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
   size: { type: String, default: "" },
   quantity: { type: Number, required: true },
+
+  // Kept for backward compatibility with existing frontend payloads.
   price: { type: Number, required: true },
+
   imageUrl: { type: String, default: "" },
+
+  // Snapshot fields keep revenue/profit correct even if product price changes later.
+  unitPriceAtPurchase: { type: Number, default: null },
+  unitListPriceAtPurchase: { type: Number, default: null },
+  discountRateAtPurchase: { type: Number, default: 0 }, // 0..1
+  unitCostAtPurchase: { type: Number, default: null },
+
+  discountCampaignId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "DiscountCampaign",
+    default: null,
+  },
 });
 
-// Shipping history schema
 const shippingHistorySchema = new mongoose.Schema({
   status: { type: String, required: true },
   date: { type: Date, default: Date.now },
@@ -27,45 +40,56 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Kept for backward compatibility.
     totalAmount: {
       type: Number,
       required: true,
     },
+
+    // Order-level snapshots for reporting and invoices.
+    subtotalAtPurchase: { type: Number, default: null },
+    discountTotalAtPurchase: { type: Number, default: 0 },
+    totalAtPurchase: { type: Number, default: null },
+    profitAtPurchase: { type: Number, default: null },
 
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
 
-    // Takip kodu
     trackingCode: {
       type: String,
       unique: true,
     },
 
-    // Şu anki kargo durumu
     shippingStatus: {
       type: String,
       default: "Processing",
     },
 
-    // Zaman çizelgesi
     shippingHistory: {
       type: [shippingHistorySchema],
       default: [],
     },
 
-    // ⭐ Delivery address (metinde isteniyordu)
     deliveryAddress: {
       type: String,
       default: "",
     },
 
-    // ⭐ Teslimat tamamlandı mı? (metindeki "completed" alanı)
     isCompleted: {
       type: Boolean,
       default: false,
     },
+
+    // These are used in routes; storing them prevents data being dropped.
+    paymentStatus: { type: String, default: "" },
+    paymentDetails: {
+      transactionId: { type: String, default: "" },
+      authCode: { type: String, default: "" },
+    },
+    invoiceNumber: { type: String, default: "" },
+    invoicePdfPath: { type: String, default: "" },
   },
   { timestamps: true }
 );
