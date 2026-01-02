@@ -223,21 +223,18 @@ function OrderHistoryPage() {
                   style={{
                     padding: "4px 8px",
                     borderRadius: "4px",
+                    fontWeight: "bold",
                     backgroundColor:
-                      order.shippingStatus === "Delivered"
-                        ? "#d4edda"
-                        : order.shippingStatus === "Processing"
-                        ? "#fff3cd"
-                        : "#d1ecf1",
+                      order.shippingStatus === "Delivered" ? "#d4edda" : 
+                      order.shippingStatus === "In-transit" ? "#d1ecf1" : 
+                      "#fff3cd",
                     color:
-                      order.shippingStatus === "Delivered"
-                        ? "#155724"
-                        : order.shippingStatus === "Processing"
-                        ? "#856404"
-                        : "#0c5460",
+                      order.shippingStatus === "Delivered" ? "#155724" : 
+                      order.shippingStatus === "In-transit" ? "#0c5460" : 
+                      "#856404",
                   }}
                 >
-                  {order.shippingStatus}
+                  {order.shippingStatus || "Processing"}
                 </span>
                 <br />
                 <strong>Total:</strong> {order.totalAmount} TL
