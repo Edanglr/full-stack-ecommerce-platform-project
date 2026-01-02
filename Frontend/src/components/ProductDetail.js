@@ -9,6 +9,8 @@ function ProductDetail() {
 
   const [product, setProduct] = useState(null);
   const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [selectedSize, setSelectedSize] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -24,8 +26,6 @@ function ProductDetail() {
   const { addToCart } = useCart();
 
   const [isFavorite, setIsFavorite] = useState(false);
-
-  // ✅ Toggle: show all sizes' stock (click on status)
   const [showStockBreakdown, setShowStockBreakdown] = useState(false);
 
   useEffect(() => {
@@ -40,7 +40,6 @@ function ProductDetail() {
 
         const data = await res.json();
         const productIds = data.map((f) => f.product._id);
-
         setIsFavorite(productIds.includes(id));
       } catch (err) {
         console.error("Favorite load error:", err);
@@ -58,7 +57,7 @@ function ProductDetail() {
     }
 
     const previousFavoriteState = isFavorite;
-    setIsFavorite(!isFavorite); // optimistic UI
+    setIsFavorite(!isFavorite);
 
     try {
       const res = await fetch("http://localhost:5050/api/favorites/toggle", {
@@ -72,7 +71,7 @@ function ProductDetail() {
 
       let data = null;
       try {
-        data = await res.json(); // ✅ SADECE 1 KEZ
+        data = await res.json();
       } catch {
         data = {};
       }
@@ -83,7 +82,6 @@ function ProductDetail() {
         return;
       }
 
-      // backend true/false dönüyorsa senkronla
       if (typeof data.favorite === "boolean") {
         setIsFavorite(data.favorite);
       }
@@ -94,15 +92,18 @@ function ProductDetail() {
     }
   };
 
-
   useEffect(() => {
     const fetchProductAndComments = async () => {
       try {
+        setLoading(true);
+        setError("");
+
         const res = await fetch(`http://localhost:5050/api/products/${id}`);
 
         if (!res.ok) {
-          console.error("Product fetch error. Status:", res.status);
+          setError("Failed to load product.");
           setProduct(null);
+          setLoading(false);
           return;
         }
 
@@ -114,8 +115,9 @@ function ProductDetail() {
           typeof productData !== "object" ||
           !productData._id
         ) {
-          console.error("Invalid or missing product data received:", data);
+          setError("Invalid product data received.");
           setProduct(null);
+          setLoading(false);
           return;
         }
 
@@ -123,14 +125,16 @@ function ProductDetail() {
         setComments(data.comments || []);
       } catch (err) {
         console.error("Product fetch network or parsing error:", err);
+        setError("Network error while loading product.");
         setProduct(null);
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchProductAndComments();
   }, [id]);
 
-  // RATING ÖZETİ GETİR
   useEffect(() => {
     const fetchRating = async () => {
       try {
@@ -149,8 +153,40 @@ function ProductDetail() {
     fetchRating();
   }, [id]);
 
-  if (!product) {
-    return <p style={{ padding: 20 }}>Loading product...</p>;
+  if (loading) {
+    return (
+      <div style={{ padding: "40px", textAlign: "center" }}>
+        <div className="spinner-border" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+        <p style={{ marginTop: "10px" }}>Loading product...</p>
+      </div>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <div
+        style={{
+          padding: "40px",
+          textAlign: "center",
+          maxWidth: "600px",
+          margin: "0 auto",
+        }}
+      >
+        <div
+          style={{
+            padding: "20px",
+            backgroundColor: "#fee",
+            border: "1px solid #fcc",
+            borderRadius: "8px",
+            color: "#c33",
+          }}
+        >
+          <strong>Error:</strong> {error || "Product not found."}
+        </div>
+      </div>
+    );
   }
 
   const sizes = ["XS", "S", "M", "L", "XL"];
@@ -161,7 +197,11 @@ function ProductDetail() {
   const selectedSizeStock =
     selectedSize && sizeStocks ? sizeStocks[selectedSize] ?? 0 : 0;
 
-  // QUANTITY ARTIRMA/AZALTMA FONKSİYONLARI - STOK KONTROLÜ İLE
+  // ✅ TASK 2: Discount display
+  const hasDiscount = product.discountRate && product.discountRate > 0;
+  const basePrice = product.basePrice || product.price;
+  const currentPrice = product.price;
+
   const handleQuantityIncrease = () => {
     if (!selectedSize) {
       alert("Please select a size first.");
@@ -198,7 +238,6 @@ function ProductDetail() {
     alert("Product added to cart.");
   };
 
-  // BUTON STATES
   const hasAnyStock = totalStock > 0;
   const hasSelectedSize = !!selectedSize;
 
@@ -219,7 +258,6 @@ function ProductDetail() {
     addButtonLabel = "Add to Cart";
   }
 
-  // Ortalama yıldızlar
   const renderAverageStars = (value) => {
     const rounded = Math.round(value || 0);
     return [...Array(5)].map((_, i) => (
@@ -229,7 +267,6 @@ function ProductDetail() {
     ));
   };
 
-  // Etkileşimli yıldızlar
   const renderInteractiveStars = () => {
     return [...Array(5)].map((_, i) => {
       const index = i + 1;
@@ -331,7 +368,6 @@ function ProductDetail() {
         </div>
 
         <div className="pd-right">
-          {/* ⭐ Ürün adı + Favori kalp */}
           <div className="pd-title-row">
             <h1 className="pd-title">{product.name}</h1>
 
@@ -340,7 +376,6 @@ function ProductDetail() {
             </button>
           </div>
 
-          {/* Rating Özeti */}
           <div className="pd-rating-block">
             <div className="pd-rating-summary">
               {renderAverageStars(averageRating)}
@@ -354,9 +389,43 @@ function ProductDetail() {
             </div>
           </div>
 
-          <p className="pd-price">{product.price} TL</p>
+          {/* ✅ TASK 2: Discount Display */}
+          <div className="pd-price-section">
+            {hasDiscount ? (
+              <>
+                <p className="pd-price" style={{ color: "#e74c3c" }}>
+                  {currentPrice} TL
+                </p>
+                <p
+                  className="pd-price-old"
+                  style={{
+                    textDecoration: "line-through",
+                    color: "#999",
+                    fontSize: "18px",
+                    marginLeft: "10px",
+                  }}
+                >
+                  {basePrice} TL
+                </p>
+                <span
+                  style={{
+                    marginLeft: "10px",
+                    padding: "4px 8px",
+                    backgroundColor: "#e74c3c",
+                    color: "white",
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {Math.round(product.discountRate * 100)}% OFF
+                </span>
+              </>
+            ) : (
+              <p className="pd-price">{currentPrice} TL</p>
+            )}
+          </div>
 
-          {/* SIZE */}
           <label className="pd-label">Select Size</label>
           <select
             className="pd-select"
@@ -375,7 +444,6 @@ function ProductDetail() {
             ))}
           </select>
 
-          {/* ✅ Stock (old line back) + click breakdown */}
           {selectedSize && (
             <>
               <p
@@ -387,12 +455,10 @@ function ProductDetail() {
                 {sizeStatus} (click)
               </p>
 
-              {/* ✅ Old behavior restored */}
               <p style={{ marginTop: "6px", fontSize: "0.9rem" }}>
                 Stock for size {selectedSize}: {selectedSizeStock}
               </p>
 
-              {/* Optional breakdown */}
               {showStockBreakdown && (
                 <div style={{ marginTop: "6px", fontSize: "0.9rem" }}>
                   {sizes.map((s) => (
@@ -414,7 +480,6 @@ function ProductDetail() {
             </>
           )}
 
-          {/* QUANTITY - STOK KONTROLÜ İLE */}
           <label className="pd-label">Quantity</label>
           <div className="pd-quantity">
             <button onClick={handleQuantityDecrease}>−</button>
@@ -433,7 +498,6 @@ function ProductDetail() {
           <h3 className="pd-info-title">Product Information</h3>
           <p className="pd-info">{product.description}</p>
 
-          {/* ✅ Requirement 9 fields (NO extra stock here) */}
           <div style={{ marginTop: "12px", fontSize: "0.95rem" }}>
             <div
               style={{
@@ -497,7 +561,6 @@ function ProductDetail() {
         </div>
       </div>
 
-      {/* FEATURES */}
       <div className="features-container">
         <div className="info-card">
           <img src="/icons/cotton.jpeg" className="info-icon" alt="Cotton" />
@@ -530,7 +593,6 @@ function ProductDetail() {
         </div>
       </div>
 
-      {/* YORUM BÖLÜMÜ */}
       <div className="comment-section">
         <h2>Customer Reviews</h2>
 
@@ -552,39 +614,38 @@ function ProductDetail() {
 
           <button
             className="pd-rating-button"
-            onClick={handleSubmitRating}
-            disabled={isSubmittingRating}
-          >
-            {isSubmittingRating ? "Sending..." : "Submit Rating & Comment"}
-          </button>
+            onClick={handleSubmitRating
+              }
+disabled={isSubmittingRating}
+>
+{isSubmittingRating ? "Sending..." : "Submit Rating & Comment"}
+</button>
+{ratingMessage && (
+        <p className="pd-rating-message">{ratingMessage}</p>
+      )}
 
-          {ratingMessage && (
-            <p className="pd-rating-message">{ratingMessage}</p>
-          )}
-
-          <p className="pd-rating-note">
-            You can rate and comment on this product only after an order
-            containing it has been delivered.
-          </p>
-        </div>
-
-        {comments.length === 0 && <p>No approved comments yet.</p>}
-
-        {comments.map((c) => (
-          <div key={c._id} className="comment-card">
-            <strong>{c.userId?.name || c.userId?.email || "User"}</strong>
-            <div className="comment-stars">{renderAverageStars(c.score)}</div>
-            <p>{c.comment}</p>
-            {c.createdAt && (
-              <span className="comment-date">
-                {new Date(c.createdAt).toLocaleString()}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
+      <p className="pd-rating-note">
+        You can rate and comment on this product only after an order
+        containing it has been delivered.
+      </p>
     </div>
-  );
-}
 
+    {comments.length === 0 && <p>No approved comments yet.</p>}
+
+    {comments.map((c) => (
+      <div key={c._id} className="comment-card">
+        <strong>{c.userId?.name || c.userId?.email || "User"}</strong>
+        <div className="comment-stars">{renderAverageStars(c.score)}</div>
+        <p>{c.comment}</p>
+        {c.createdAt && (
+          <span className="comment-date">
+            {new Date(c.createdAt).toLocaleString()}
+          </span>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
+);
+}
 export default ProductDetail;
