@@ -1,4 +1,4 @@
- // backend/src/routes/orderRoutes.js
+// backend/src/routes/orderRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
@@ -12,31 +12,20 @@ import { sendInvoiceEmail } from "../utils/email.js";
 
 const router = express.Router();
 
+// 1) Yeni Sipariş Oluşturma
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { items, deliveryAddress } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "No items provided in the order." });
+      return res.status(400).json({ message: "No items provided in the order." });
     }
 
-    // 1) Stok kontrolü
+    // Stok kontrolü
     for (const item of items) {
       const product = await Product.findById(item.productId);
-
-      if (!product) {
-        return res
-          .status(404)
-          .json({ message: `Product not found: ${item.productId}` });
-      }
-
-      if (!item.size) {
-        return res
-          .status(400)
-          .json({ message: `Size is required for product ${product.name}` });
-      }
+      if (!product) return res.status(404).json({ message: `Product not found: ${item.productId}` });
+      if (!item.size) return res.status(400).json({ message: `Size is required for product ${product.name}` });
 
       const sizeKey = item.size;
       const sizes = product.sizes || {};
@@ -49,7 +38,7 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    // 2) Stok düşme
+    // Stok düşme
     for (const item of items) {
       const sizeKey = item.size;
       await Product.findByIdAndUpdate(item.productId, {
@@ -57,107 +46,41 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    // 3) Toplam tutar
-    const totalAmount = items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
+    const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-    // 4) Mock bankadan ödeme al
-    const paymentResult = await mockBankCharge({
-      amount: totalAmount,
-      user: req.user,
-    });
-
+    // Mock bankadan ödeme al
+    const paymentResult = await mockBankCharge({ amount: totalAmount, user: req.user });
     if (!paymentResult || !paymentResult.success) {
-      console.error("PAYMENT FAILED:", paymentResult);
-      return res
-        .status(402)
-        .json({ message: "Payment failed. Please try again." });
+      return res.status(402).json({ message: "Payment failed. Please try again." });
     }
 
-    // 5) Takip kodu
     const trackingCode = generateTrackingCode();
 
-    // 6) Siparişi kaydet
     const newOrder = await Order.create({
       user: req.user.id,
       items,
       totalAmount,
       trackingCode,
       shippingStatus: "Processing",
-      shippingHistory: [
-        {
-          status: "Order received",
-          date: new Date(),
-        },
-      ],
+      shippingHistory: [{ status: "Order received", date: new Date() }],
       paymentStatus: "Paid",
-      paymentDetails: {
-        transactionId: paymentResult.transactionId || "",
-        authCode: paymentResult.authCode || "",
-      },
+      paymentDetails: { transactionId: paymentResult.transactionId || "", authCode: paymentResult.authCode || "" },
       deliveryAddress: deliveryAddress || "",
       isCompleted: false,
     });
 
-    // Kullanıcı bilgileri (invoice + mail için)
     const user = await User.findById(req.user.id).lean();
-
-    if (!user) {
-      console.warn(
-        "Order created but user not found for invoice/email:",
-        req.user.id
-      );
-    } else {
+    if (user) {
       try {
-        // 7) Invoice PDF üret
-        const { invoiceNumber, pdfPath } = await generateInvoicePdf({
-          order: newOrder,
-          user,
-        });
-
+        const { invoiceNumber, pdfPath } = await generateInvoicePdf({ order: newOrder, user });
         newOrder.invoiceNumber = invoiceNumber;
         newOrder.invoicePdfPath = pdfPath;
         await newOrder.save();
-
-        // 8) Invoice email gönder
-        if (user.email) {
-          try {
-            await sendInvoiceEmail({ to: user.email, pdfPath });
-          } catch (emailErr) {
-            console.error("EMAIL SEND ERROR:", emailErr);
-          }
-        } else {
-          console.warn(
-            "User email missing, cannot send invoice email for user:",
-            user._id
-          );
-        }
+        if (user.email) await sendInvoiceEmail({ to: user.email, pdfPath });
       } catch (invoiceErr) {
-        console.error("INVOICE GENERATION ERROR:", invoiceErr);
+        console.error("INVOICE ERROR:", invoiceErr);
       }
     }
-
-    console.log("NEW ORDER CREATED:", {
-      id: newOrder._id.toString(),
-      trackingCode: newOrder.trackingCode,
-      totalAmount: newOrder.totalAmount,
-      user: req.user.id,
-    });
-
-    // Shipping address bilgisi (frontend'e gidecek)
- const name =
-      (user &&
-        (user.name ||
-          `${user.firstName || ""} ${user.lastName || ""}`.trim())) ||
-      "Customer";
-    const address =
-      (user && (user.address || user.shippingAddress)) ||
-      newOrder.deliveryAddress ||
-      "";
-    const city = (user && user.city) || "";
-    const postalCode = (user && (user.postalCode || user.zip)) || "";
 
     return res.status(201).json({
       message: "Order created and paid successfully.",
@@ -170,45 +93,39 @@ router.post("/", requireAuth, async (req, res) => {
         items: newOrder.items,
         trackingCode: newOrder.trackingCode,
         shippingAddress: {
-          name,
-          address,
-          city,
-          postalCode,
+          name: user?.name || "Customer",
+          address: user?.address || newOrder.deliveryAddress || "",
+          city: user?.city || "",
+          postalCode: user?.postalCode || user?.zip || "",
         },
       },
     });
   } catch (err) {
     console.error("ORDER ERROR:", err);
-    return res
-      .status(500)
-      .json({ message: "Server error while creating order." });
+    return res.status(500).json({ message: "Server error while creating order." });
   }
 });
 
-
+// 2) Kullanıcının Kendi Siparişlerini Çekmesi
 router.get("/my", requireAuth, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
-      .populate({
-        path: "items.productId",
-        select: "name imageUrl image price", 
-      })
+      .populate({ path: "items.productId", select: "name imageUrl image price" })
       .sort({ createdAt: -1 })
       .lean();
 
     const formatted = orders.map((order) => ({
       _id: order._id,
-     
       orderCode: order._id.toString().slice(-6).toUpperCase(),
       trackingCode: order.trackingCode || "N/A", 
-      status: order.shippingStatus || "Processing",
+      shippingStatus: order.shippingStatus || "Processing",
       totalAmount: order.totalAmount, 
       createdAt: order.createdAt,
       shippingHistory: order.shippingHistory || [],
       items: order.items.map((i) => ({
-        name: i.productId?.name || "Product",
+        name: i.productId?.name || i.name || "Product",
         productId: i.productId?._id || i.productId,
-        imageUrl: i.productId?.imageUrl || i.productId?.image || "https://via.placeholder.com/80?text=No+Image",
+        imageUrl: i.productId?.imageUrl || i.productId?.image || i.imageUrl || "https://via.placeholder.com/80?text=No+Image",
         price: i.price,
         quantity: i.quantity,
         size: i.size,
@@ -217,152 +134,120 @@ router.get("/my", requireAuth, async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    console.error("ORDER FETCH ERROR:", err);
     res.status(500).json({ message: "Order fetch error." });
   }
 });
 
-router.get("/:id/invoice", requireAuth, async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id).lean();
-
-    if (!order) {
-      return res.status(404).json({ message: "Order not found." });
-    }
-
-    if (order.user.toString() !== req.user.id) {
-      return res
-        .status(403)
-        .json({ message: "Not authorized to view this invoice." });
-    }
-
-    const user = await User.findById(req.user.id).lean();
-
-    const name =
-      (user &&
-        (user.name ||
-          `${user.firstName || ""} ${user.lastName || ""}`.trim())) ||
-      "Customer";
-    const address =
-      (user && (user.address || user.shippingAddress)) ||
-      order.deliveryAddress ||
-      "";
-    const city = (user && user.city) || "";
-    const postalCode = (user && (user.postalCode || user.zip)) || "";
-
-    return res.json({
-      invoice: {
-        invoiceNumber: order.invoiceNumber || "",
-        totalAmount: order.totalAmount || 0,
-        createdAt: order.createdAt,
-        items: order.items || [],
-        trackingCode: order.trackingCode,
-        shippingAddress: {
-          name,
-          address,
-          city,
-          postalCode,
-        },
-      },
-    });
-  } catch (err) {
-    console.error("GET /api/orders/:id/invoice error:", err);
-    return res
-      .status(500)
-      .json({ message: "Error while fetching invoice details." });
-  }
-});
-
-// ✅ TASK 3: ORDER CANCELLATION
+// 3) Sipariş İptali (Kullanıcı Tarafı - Full Order)
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found." });
 
-    if (!order) {
-      return res.status(404).json({ message: "Order not found." });
-    }
-
-    // Sadece kendi siparişini iptal edebilir
     if (order.user.toString() !== req.user.id) {
       return res.status(403).json({ message: "Not authorized to cancel this order." });
     }
 
-    // Sadece Processing status'teki siparişler iptal edilebilir
     if (order.shippingStatus !== "Processing") {
-      return res.status(400).json({ 
-        message: `Cannot cancel order. Current status: ${order.shippingStatus}. Only orders in "Processing" status can be cancelled.` 
-      });
+      return res.status(400).json({ message: `Cannot cancel order in ${order.shippingStatus} status.` });
     }
 
     // Stokları geri yükle
     for (const item of order.items) {
-      const sizeKey = item.size;
       await Product.findByIdAndUpdate(item.productId, {
-        $inc: { [`sizes.${sizeKey}`]: item.quantity },
+        $inc: { [`sizes.${item.size}`]: item.quantity },
       });
     }
 
-    // Siparişi sil
-    await Order.findByIdAndDelete(req.params.id);
+    // Siparişi silmek yerine durumunu Cancelled yapıyoruz (Kaydı korumak için tavsiye edilir)
+    order.shippingStatus = "Cancelled";
+    order.shippingHistory.push({ status: "Order cancelled by customer", date: new Date() });
+    await order.save();
 
-    return res.json({
-      message: "Order cancelled successfully. Stock has been restored.",
-    });
+    return res.json({ message: "Order cancelled successfully. Stock has been restored." });
   } catch (err) {
-    console.error("DELETE /api/orders/:id error:", err);
     return res.status(500).json({ message: "Error while cancelling order." });
   }
 });
 
-// ✅ sadece productManager (manager legacy zaten geçer)
-router.put("/:id/status", requireRole("productManager"), async (req, res) => {
+// 4) Siparişten Ürün İptali (Support/Admin Tarafı)
+router.post("/:orderId/cancel-item", requireRole("supportAgent", "productManager"), async (req, res) => {
   try {
-    const { status } = req.body;
-    const allowed = ["Processing", "In-transit", "Delivered"];
+    const { orderId } = req.params;
+    const { productId, size } = req.body;
 
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ message: "Invalid status value." });
-    }
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found." });
 
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found." });
-    }
-
-    order.shippingStatus = status;
-    order.shippingHistory.push({
-      status,
-      date: new Date(),
+    const itemIndex = order.items.findIndex((it) => {
+      const itemProdId = it.productId._id ? it.productId._id.toString() : it.productId.toString();
+      const targetSize = size === "-" ? "" : (size || "");
+      const itemSize = it.size === "-" ? "" : (it.size || "");
+      return itemProdId === productId.toString() && itemSize === targetSize;
     });
 
-    // Delivered ise tamamlandı olarak işaretle
-    order.isCompleted = status === "Delivered";
+    if (itemIndex === -1) return res.status(404).json({ message: "Item not found." });
+
+    const cancelledItem = order.items[itemIndex];
+
+    // Stok geri yükle
+    await Product.findByIdAndUpdate(cancelledItem.productId, {
+      $inc: { [`sizes.${cancelledItem.size || ""}`]: cancelledItem.quantity }
+    });
+
+    // Fiyatı düş ve ürünü çıkar
+    order.totalAmount = Math.max(0, order.totalAmount - (cancelledItem.price * cancelledItem.quantity));
+    order.items.splice(itemIndex, 1);
+    
+    order.shippingHistory.push({
+      status: `Item cancelled: ${cancelledItem.name}`,
+      date: new Date()
+    });
+
+    // Eğer ürün kalmadıysa veya kritik bir iptalse durumu güncelliyoruz
+    if (order.items.length === 0) {
+      order.shippingStatus = "Cancelled";
+    } else {
+      // Ürün iptal edildiğinde ana durumun "Cancelled" gözükmesini istiyorsanız:
+      order.shippingStatus = "Cancelled"; 
+    }
 
     await order.save();
-
-    return res.json({
-      message: "Order status updated.",
-      order,
-    });
+    res.json({ message: "Item successfully cancelled.", order });
   } catch (err) {
-    console.error("PUT /api/orders/:id/status error:", err);
-    return res
-      .status(500)
-      .json({ message: "Error while updating order status." });
+    res.status(500).json({ message: "Internal server error." });
   }
 });
 
+// 5) Sipariş Durumu Güncelleme (Admin)
+router.put("/:id/status", requireRole("productManager"), async (req, res) => {
+  try {
+    const { status } = req.body;
+    const allowed = ["Processing", "In-transit", "Delivered", "Cancelled"];
+
+    if (!allowed.includes(status)) return res.status(400).json({ message: "Invalid status." });
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found." });
+
+    order.shippingStatus = status;
+    order.shippingHistory.push({ status, date: new Date() });
+    order.isCompleted = status === "Delivered";
+
+    await order.save();
+    return res.json({ message: "Order status updated.", order });
+  } catch (err) {
+    return res.status(500).json({ message: "Error while updating status." });
+  }
+});
+
+// 6) Kargo Takibi
 router.get("/track/:trackingCode", async (req, res) => {
   try {
-    const { trackingCode } = req.params;
+    const order = await Order.findOne({ trackingCode: req.params.trackingCode });
+    if (!order) return res.status(404).json({ message: "Tracking code not found." });
 
-    const order = await Order.findOne({ trackingCode });
-
-    if (!order) {
-      return res.status(404).json({ message: "Tracking code not found." });
-    }
-
-    return res.status(200).json({
+    return res.json({
       trackingCode: order.trackingCode,
       shippingStatus: order.shippingStatus,
       shippingHistory: order.shippingHistory,
@@ -371,186 +256,32 @@ router.get("/track/:trackingCode", async (req, res) => {
       createdAt: order.createdAt,
     });
   } catch (err) {
-    console.error("TRACKING ERROR:", err);
-    return res
-      .status(500)
-      .json({ message: "Server error while retrieving tracking info." });
+    return res.status(500).json({ message: "Tracking error." });
   }
 });
 
-/**
- * GET /api/orders/admin/deliveries
- * -> product manager / delivery department view
- */
+// 7) Admin Delivery Görünümü
 router.get("/admin/deliveries", requireRole("productManager"), async (_req, res) => {
   try {
-    const orders = await Order.find({})
-      .populate("user", "name email")
-      .lean()
-      .sort({ createdAt: -1 });
+    const orders = await Order.find({}).populate("user", "name email").lean().sort({ createdAt: -1 });
 
     const deliveryList = orders.flatMap((order) =>
       order.items.map((item) => ({
         deliveryId: order._id,
-        customerId: order.user?._id || null,
         customerName: order.user?.name || order.user?.email || "Unknown",
-        productId: item.productId,
         productName: item.name,
         quantity: item.quantity,
         totalPrice: item.price * item.quantity,
         deliveryAddress: order.deliveryAddress || "Not specified",
         shippingStatus: order.shippingStatus,
-        completed: !!order.isCompleted,
         trackingCode: order.trackingCode,
         createdAt: order.createdAt,
       }))
     );
-
     return res.json(deliveryList);
   } catch (err) {
-    console.error("GET /api/orders/admin/deliveries error:", err);
-    return res
-      .status(500)
-      .json({ message: "Error while fetching delivery list." });
+    return res.status(500).json({ message: "Error fetching deliveries." });
   }
 });
-
-// ✅ invoices: salesManager + productManager (manager legacy geçer)
-router.get("/admin/invoices", requireRole("salesManager", "productManager"), async (_req, res) => {
-  try {
-    const orders = await Order.find({})
-      .populate("user", "name email")
-      .lean()
-      .sort({ createdAt: -1 });
-
-    const invoices = orders.map((order) => ({
-      invoiceId: order._id,
-      customerId: order.user?._id || null,
-      customerName: order.user?.name || order.user?.email || "Unknown",
-      items: order.items,
-      totalAmount: order.totalAmount,
-      deliveryAddress: order.deliveryAddress || "Not specified",
-      trackingCode: order.trackingCode,
-      shippingStatus: order.shippingStatus,
-      createdAt: order.createdAt,
-    }));
-
-    return res.json(invoices);
-  } catch (err) {
-    console.error("GET /api/orders/admin/invoices error:", err);
-    return res
-      .status(500)
-      .json({ message: "Error while fetching invoices." });
-  }
-});
-
-router.post("/:orderId/cancel-item", requireRole("supportAgent", "productManager"), async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { productId, size } = req.body;
-
-    if (!productId) {
-      return res.status(400).json({ message: "Product ID is required." });
-    }
-
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ message: "Order not found." });
-
-    const itemIndex = order.items.findIndex((it) => {
-      if (!it.productId) return false; 
-
-
-      const itemProdId = it.productId._id 
-        ? it.productId._id.toString() 
-        : it.productId.toString();
-      
-      
-      const targetSize = size === "-" ? "" : (size || "");
-      const itemSize = it.size === "-" ? "" : (it.size || "");
-
-      return itemProdId === productId.toString() && itemSize === targetSize;
-    });
-
-    if (itemIndex === -1) {
-      return res.status(404).json({ message: "Item not found in this order." });
-    }
-
-    const cancelledItem = order.items[itemIndex];
-
-    
-    const productExists = await Product.findById(cancelledItem.productId);
-    if (productExists) {
-      const sizeKey = cancelledItem.size || "";
-      await Product.findByIdAndUpdate(cancelledItem.productId, {
-        $inc: { [`sizes.${sizeKey}`]: cancelledItem.quantity }
-      });
-    }
-
-   
-    const itemPrice = Number(cancelledItem.price) || 0;
-    const itemQty = Number(cancelledItem.quantity) || 0;
-    order.totalAmount = Math.max(0, order.totalAmount - (itemPrice * itemQty));
-    
-    order.items.splice(itemIndex, 1);
-    
-    order.shippingHistory.push({
-      status: `Item cancelled: ${cancelledItem.name || 'Unknown Product'}`,
-      date: new Date()
-    });
-
-   
-    if (order.items.length === 0) {
-      order.shippingStatus = "Cancelled";
-    }
-
-    await order.save();
-    res.json({ message: "Item successfully cancelled.", order });
-
-  } catch (err) {
-    console.error("CANCEL ERROR:", err);
-    res.status(500).json({ message: "Internal server error: " + err.message });
-  }
-});
-/**
- * GET /api/orders/by-user/:userId
- * -> Support: selected customer orders
- */
-
-router.get("/by-user/:userId", requireRole("supportAgent", "salesManager", "productManager"),
-  async (req, res) => {
-    try {
-      const { userId } = req.params;
-
-      const orders = await Order.find({ user: userId })
-        .populate({
-          path: "items.productId",
-          select: "name image imageUrl price",
-        })
-        .sort({ createdAt: -1 })
-        .lean();
-
-      const formatted = orders.map((order) => ({
-        _id: order._id,
-        orderCode: order._id.toString().slice(-6).toUpperCase(),
-        status: order.shippingStatus,
-        totalPrice: order.totalAmount,
-        createdAt: order.createdAt,
-        items: order.items.map((i) => ({
-          name: i.productId?.name || i.name,
-          productId: i.productId?._id || i.productId,
-          imageUrl: i.productId?.imageUrl || i.productId?.image || i.imageUrl || "", 
-          price: i.price,
-          quantity: i.quantity,
-          size: i.size,
-        })),
-      }));
-
-      res.json(formatted);
-    } catch (err) {
-      console.error("GET /orders/by-user error:", err);
-      res.status(500).json({ message: "Cannot fetch customer orders." });
-    }
-  }
-);
 
 export default router;
