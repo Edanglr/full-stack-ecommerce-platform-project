@@ -15,7 +15,7 @@ const orderItemSchema = new mongoose.Schema({
 
   imageUrl: { type: String, default: "" },
 
-  // Snapshot fields keep revenue/profit correct even if product price changes later.
+  // Snapshot fields keep reporting correct even if product price changes later.
   unitPriceAtPurchase: { type: Number, default: null },
   unitListPriceAtPurchase: { type: Number, default: null },
   discountRateAtPurchase: { type: Number, default: 0 }, // 0..1
@@ -46,7 +46,7 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Order-level snapshots for reporting and invoices.
+    // Order-level snapshots for revenue/profit and invoice rendering.
     subtotalAtPurchase: { type: Number, default: null },
     discountTotalAtPurchase: { type: Number, default: 0 },
     totalAtPurchase: { type: Number, default: null },
@@ -82,7 +82,7 @@ const orderSchema = new mongoose.Schema(
       default: false,
     },
 
-    // These are used in routes; storing them prevents data being dropped.
+    // These are used in routes; keeping them in schema prevents data loss.
     paymentStatus: { type: String, default: "" },
     paymentDetails: {
       transactionId: { type: String, default: "" },
