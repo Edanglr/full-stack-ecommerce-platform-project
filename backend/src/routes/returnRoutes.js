@@ -1,3 +1,4 @@
+// backend/src/routes/returnRoutes.js
 import express from "express";
 import ReturnRequest from "../models/returnModel.js";
 import Order from "../models/Order.js";
@@ -6,8 +7,6 @@ import { requireAuth, requireSalesManager } from "../middleware/auth.js";
 import { sendRefundApprovalEmail } from "../utils/email.js";
 
 const router = express.Router();
-
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 function pushReturnHistory(ret, status, note, byUserId) {
   ret.statusHistory = ret.statusHistory || [];
@@ -19,20 +18,18 @@ function pushReturnHistory(ret, status, note, byUserId) {
   });
 }
 
-function matchOrderItem(order, productId, size) {
-  const items = order?.items || [];
-  return items.find((it) => {
-    const itemProdId = it.product || it.productId;
-    const sameProd = String(itemProdId) === String(productId);
-    const sameSize = !size || String(it.size || "") === String(size || "");
-    return sameProd && sameSize;
+function pushOrderHistory(order, statusText) {
+  order.shippingHistory = order.shippingHistory || [];
+  order.shippingHistory.push({
+    date: new Date(),
+    status: statusText,
   });
 }
 
-/**
- * CUSTOMER: Create return request
- * POST /api/returns
- */
+/*
+CUSTOMER
+POST /api/returns
+*/
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { orderId, productId, size, quantity, reason } = req.body;
@@ -44,9 +41,7 @@ router.post("/", requireAuth, async (req, res) => {
     const userId = req.user.id || req.user._id;
 
     const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found." });
-    }
+    if (!order) return res.status(404).json({ message: "Order not found." });
 
     if (order.user?.toString() !== userId.toString()) {
       return res.status(403).json({ message: "Not authorized." });
@@ -57,7 +52,13 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "You can only return delivered orders." });
     }
 
-    const orderItem = matchOrderItem(order, productId, size);
+    const orderItem = (order.items || []).find((it) => {
+      const itemProdId = it.product || it.productId;
+      const sameProd = String(itemProdId) === String(productId);
+      const sameSize = !size || String(it.size || "") === String(size || "");
+      return sameProd && sameSize;
+    });
+
     if (!orderItem) {
       return res.status(400).json({ message: "This product is not part of the order." });
     }
@@ -65,17 +66,14 @@ router.post("/", requireAuth, async (req, res) => {
     const finalSize = (size || orderItem.size || "").toString();
     const finalQty = Number(quantity || orderItem.quantity || 1);
 
-    if (!finalSize) {
-      return res.status(400).json({ message: "Size is required for return." });
-    }
-    if (!finalQty || finalQty <= 0) {
-      return res.status(400).json({ message: "Invalid quantity." });
-    }
+    if (!finalSize) return res.status(400).json({ message: "Size is required for return." });
+    if (!finalQty || finalQty <= 0) return res.status(400).json({ message: "Invalid quantity." });
 
     const existingReturn = await ReturnRequest.findOne({
       order: orderId,
       product: productId,
       size: finalSize,
+      status: { $ne: "Cancelled" },
     });
 
     if (existingReturn) {
@@ -91,21 +89,9 @@ router.post("/", requireAuth, async (req, res) => {
       reason,
       status: "Requested",
       requestedAt: new Date(),
-      statusHistory: [
-        {
-          status: "Requested",
-          note: "Request created",
-          by: userId,
-          at: new Date(),
-        },
-      ],
     });
 
-    order.shippingHistory = order.shippingHistory || [];
-    order.shippingHistory.push({
-      date: new Date(),
-      status: `Return requested: ${reason}`,
-    });
+    pushOrderHistory(order, `Return requested: ${reason}`);
     await order.save();
 
     return res.status(201).json(returnRequest);
@@ -115,17 +101,17 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-/**
- * CUSTOMER: My returns
- * GET /api/returns/my
- */
+/*
+CUSTOMER
+GET /api/returns/my
+*/
 router.get("/my", requireAuth, async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
 
     const returns = await ReturnRequest.find({ user: userId })
       .populate("product", "name imageUrl image price")
-      .populate("order", "_id trackingCode")
+      .populate("order", "_id trackingCode shippingStatus")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -149,10 +135,10 @@ router.get("/my", requireAuth, async (req, res) => {
   }
 });
 
-/**
- * SALES MANAGER: All return requests
- * GET /api/returns
- */
+/*
+SALES MANAGER
+GET /api/returns
+*/
 router.get("/", requireSalesManager, async (_req, res) => {
   try {
     const list = await ReturnRequest.find({})
@@ -168,10 +154,12 @@ router.get("/", requireSalesManager, async (_req, res) => {
   }
 });
 
-/**
- * SALES MANAGER: Approve return
- * PATCH /api/returns/:id/approve
- */
+/*
+SALES MANAGER
+PATCH /api/returns/:id/approve
+Moves Requested -> Approved
+Stock update is done here
+*/
 router.patch("/:id/approve", requireSalesManager, async (req, res) => {
   try {
     const returnId = req.params.id;
@@ -182,51 +170,40 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
       .populate("product", "name")
       .populate("order");
 
-    if (!ret) {
-      return res.status(404).json({ message: "Return request not found." });
-    }
+    if (!ret) return res.status(404).json({ message: "Return request not found." });
 
     if (ret.status !== "Requested") {
-      return res.status(400).json({
-        message: `Return status must be Requested (current: ${ret.status}).`,
-      });
+      return res.status(400).json({ message: `Return status must be Requested (current: ${ret.status}).` });
     }
 
     const order = ret.order;
-    if (!order) {
-      return res.status(400).json({ message: "Order not found for this return." });
-    }
+    if (!order) return res.status(400).json({ message: "Order not found for this return." });
 
     const ship = String(order.shippingStatus || "").toLowerCase();
     if (ship !== "delivered") {
-      return res.status(400).json({
-        message: "Refund can only be approved if order is delivered.",
-      });
+      return res.status(400).json({ message: "Refund can only be approved if order is delivered." });
     }
 
-    const orderItem = matchOrderItem(order, ret.product?._id || ret.product, ret.size);
+    const orderItem = (order.items || []).find((it) => {
+      const itemProdId = it.product || it.productId;
+      const sameProd = String(itemProdId) === String(ret.product?._id || ret.product);
+      const sameSize = !ret.size || String(it.size || "") === String(ret.size || "");
+      return sameProd && sameSize;
+    });
+
     if (!orderItem) {
-      return res.status(400).json({
-        message: "Matching order item not found for refund calculation.",
-      });
+      return res.status(400).json({ message: "Matching order item not found for refund calculation." });
     }
 
     const qty = Number(ret.quantity || 1);
-
-    const unitSale =
-      orderItem.unitPriceAtPurchase != null
-        ? Number(orderItem.unitPriceAtPurchase)
-        : Number(orderItem.price || 0);
-
-    const refundedAmount = round2(unitSale * qty);
+    const refundedAmount = Number(orderItem.price || 0) * qty;
 
     ret.status = "Approved";
-    ret.refundedAmount = refundedAmount;
-    ret.processedAt = new Date();
+    ret.refundedAmount = Math.round(refundedAmount * 100) / 100;
     ret.approvedAt = new Date();
+    ret.processedAt = new Date();
 
     pushReturnHistory(ret, "Approved", "Approved by sales manager", managerId);
-
     await ret.save();
 
     if (ret.size) {
@@ -236,11 +213,7 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
       );
     }
 
-    order.shippingHistory = order.shippingHistory || [];
-    order.shippingHistory.push({
-      date: new Date(),
-      status: `Return approved (Return ${ret._id}) - ${ret.refundedAmount} TL`,
-    });
+    pushOrderHistory(order, `Return approved (Return ${ret._id})`);
     await order.save();
 
     const to = ret.user?.email;
@@ -255,50 +228,42 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
           quantity: qty,
           refundedAmount: ret.refundedAmount,
         });
-      } catch (emailErr) {
-        console.error("REFUND EMAIL ERROR:", emailErr);
+      } catch (mailErr) {
+        console.error("REFUND APPROVAL EMAIL ERROR:", mailErr);
       }
     }
 
-    return res.json({
-      message: "Refund approved, stock updated, email sent.",
-      returnRequest: ret,
-    });
+    return res.json({ message: "Refund approved.", returnRequest: ret });
   } catch (err) {
     console.error("APPROVE REFUND ERROR:", err);
     return res.status(500).json({ message: "Server error: " + err.message });
   }
 });
 
-/**
- * SALES MANAGER: Reject return
- * PATCH /api/returns/:id/reject
- */
+/*
+SALES MANAGER
+PATCH /api/returns/:id/reject
+Moves Requested -> Rejected
+*/
 router.patch("/:id/reject", requireSalesManager, async (req, res) => {
   try {
     const returnId = req.params.id;
     const managerId = req.user?.id || req.user?._id || null;
-
-    const reason = String(req.body?.reason || "").trim();
+    const reason = String(req.body?.reason || "");
 
     const ret = await ReturnRequest.findById(returnId);
-    if (!ret) {
-      return res.status(404).json({ message: "Return request not found." });
-    }
+    if (!ret) return res.status(404).json({ message: "Return request not found." });
 
     if (ret.status !== "Requested") {
-      return res.status(400).json({
-        message: `Return status must be Requested (current: ${ret.status}).`,
-      });
+      return res.status(400).json({ message: `Return status must be Requested (current: ${ret.status}).` });
     }
 
     ret.status = "Rejected";
     ret.rejectReason = reason;
-    ret.processedAt = new Date();
     ret.rejectedAt = new Date();
+    ret.processedAt = new Date();
 
-    pushReturnHistory(ret, "Rejected", reason ? `Rejected: ${reason}` : "Rejected", managerId);
-
+    pushReturnHistory(ret, "Rejected", reason ? `Rejected: ${reason}` : "Rejected by sales manager", managerId);
     await ret.save();
 
     return res.json({ message: "Return request rejected.", returnRequest: ret });
@@ -308,26 +273,34 @@ router.patch("/:id/reject", requireSalesManager, async (req, res) => {
   }
 });
 
-/**
- * SALES MANAGER: Mark received
- * PATCH /api/returns/:id/received
- */
+/*
+SALES MANAGER
+PATCH /api/returns/:id/received
+Moves Approved -> Received
+*/
 router.patch("/:id/received", requireSalesManager, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || null;
 
-    const ret = await ReturnRequest.findById(req.params.id);
+    const ret = await ReturnRequest.findById(req.params.id).populate("order").populate("product", "name");
     if (!ret) return res.status(404).json({ message: "Return request not found." });
 
     if (ret.status !== "Approved") {
-      return res.status(400).json({ message: `Return must be Approved (current: ${ret.status}).` });
+      return res.status(400).json({ message: `Return status must be Approved (current: ${ret.status}).` });
     }
 
     ret.status = "Received";
     ret.receivedAt = new Date();
-    pushReturnHistory(ret, "Received", "Item received", managerId);
+    ret.processedAt = new Date();
 
+    pushReturnHistory(ret, "Received", "Item received by warehouse", managerId);
     await ret.save();
+
+    if (ret.order) {
+      pushOrderHistory(ret.order, `Return received (Return ${ret._id})`);
+      await ret.order.save();
+    }
+
     return res.json({ message: "Return marked as received.", returnRequest: ret });
   } catch (err) {
     console.error("RECEIVED RETURN ERROR:", err);
@@ -335,27 +308,20 @@ router.patch("/:id/received", requireSalesManager, async (req, res) => {
   }
 });
 
-/**
- * SALES MANAGER: Finalize refund
- * PATCH /api/returns/:id/refund
- * Body: { refundedAmount? }
- */
+/*
+SALES MANAGER
+PATCH /api/returns/:id/refund
+Moves Received -> Refunded
+*/
 router.patch("/:id/refund", requireSalesManager, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || null;
 
-    const ret = await ReturnRequest.findById(req.params.id);
+    const ret = await ReturnRequest.findById(req.params.id).populate("order").populate("product", "name");
     if (!ret) return res.status(404).json({ message: "Return request not found." });
 
-    if (!(ret.status === "Approved" || ret.status === "Received")) {
-      return res.status(400).json({ message: `Return must be Approved/Received (current: ${ret.status}).` });
-    }
-
-    const override = req.body?.refundedAmount;
-    if (override != null) {
-      const n = Number(override);
-      if (!(n >= 0)) return res.status(400).json({ message: "refundedAmount must be a valid number." });
-      ret.refundedAmount = round2(n);
+    if (ret.status !== "Received") {
+      return res.status(400).json({ message: `Return status must be Received (current: ${ret.status}).` });
     }
 
     ret.status = "Refunded";
@@ -363,37 +329,49 @@ router.patch("/:id/refund", requireSalesManager, async (req, res) => {
     ret.processedAt = new Date();
 
     pushReturnHistory(ret, "Refunded", "Refund processed", managerId);
-
     await ret.save();
-    return res.json({ message: "Refund marked as processed.", returnRequest: ret });
+
+    if (ret.order) {
+      pushOrderHistory(ret.order, `Refunded (Return ${ret._id}) ${ret.refundedAmount} TL`);
+      await ret.order.save();
+    }
+
+    return res.json({ message: "Return marked as refunded.", returnRequest: ret });
   } catch (err) {
     console.error("REFUND RETURN ERROR:", err);
     return res.status(500).json({ message: "Server error: " + err.message });
   }
 });
 
-/**
- * SALES MANAGER: Complete return
- * PATCH /api/returns/:id/complete
- */
+/*
+SALES MANAGER
+PATCH /api/returns/:id/complete
+Moves Refunded -> Completed
+*/
 router.patch("/:id/complete", requireSalesManager, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || null;
 
-    const ret = await ReturnRequest.findById(req.params.id);
+    const ret = await ReturnRequest.findById(req.params.id).populate("order").populate("product", "name");
     if (!ret) return res.status(404).json({ message: "Return request not found." });
 
-    if (!(ret.status === "Refunded" || ret.status === "Received" || ret.status === "Approved")) {
-      return res.status(400).json({ message: `Cannot complete (current: ${ret.status}).` });
+    if (ret.status !== "Refunded") {
+      return res.status(400).json({ message: `Return status must be Refunded (current: ${ret.status}).` });
     }
 
     ret.status = "Completed";
     ret.completedAt = new Date();
+    ret.processedAt = new Date();
 
-    pushReturnHistory(ret, "Completed", "Return completed", managerId);
-
+    pushReturnHistory(ret, "Completed", "Return flow completed", managerId);
     await ret.save();
-    return res.json({ message: "Return completed.", returnRequest: ret });
+
+    if (ret.order) {
+      pushOrderHistory(ret.order, `Return completed (Return ${ret._id})`);
+      await ret.order.save();
+    }
+
+    return res.json({ message: "Return marked as completed.", returnRequest: ret });
   } catch (err) {
     console.error("COMPLETE RETURN ERROR:", err);
     return res.status(500).json({ message: "Server error: " + err.message });
