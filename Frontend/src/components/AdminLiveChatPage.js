@@ -15,7 +15,6 @@ function AdminLiveChatPage({ user }) {
 
     const fetchChats = async () => {
       try {
-        // Backend'in artık hem aktif hem 'closed' olanları döndürmeli
         const res = await fetch("http://localhost:5050/api/chats/admin", {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -28,8 +27,8 @@ function AdminLiveChatPage({ user }) {
             name: c.customerName,
             chatId: c.chatId,
             lastText: c.lastText,
-            status: c.status || 'active', // ✅ EKLENDİ: Durum bilgisini alıyoruz
-            updatedAt: c.updatedAt // ✅ EKLENDİ: Sıralama için tarih (opsiyonel)
+            status: c.status || 'active',
+            updatedAt: c.updatedAt
           }))
         );
       } catch (err) {
@@ -40,7 +39,9 @@ function AdminLiveChatPage({ user }) {
     fetchChats();
   }, []);
 
-  // ... (2. useEffect ve diğer kısımlar aynı kalabilir) ...
+  /* ================================
+     2️⃣ Kullanıcı Detayları ve Siparişler
+  ================================= */
   useEffect(() => {
     if (!selectedChat?.id) return;
     const token = localStorage.getItem("token");
@@ -64,6 +65,39 @@ function AdminLiveChatPage({ user }) {
     fetchDetails();
   }, [selectedChat]);
 
+  /* ================================
+     3️⃣ Ürün İptal Etme Fonksiyonu
+  ================================= */
+  const handleCancelItem = async (orderId, productId, size, productName) => {
+    if (!window.confirm(`Are you sure you want to cancel "${productName}"? Stock will be restored.`)) return;
+
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`http://localhost:5050/api/orders/${orderId}/cancel-item`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ productId, size }),
+      });
+
+      if (res.ok) {
+        alert("Item cancelled successfully.");
+        // Listeyi yenilemek için güncel siparişleri tekrar çek
+        const updatedOrders = await fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, { 
+          headers: { Authorization: `Bearer ${token}` } 
+        }).then(r => r.json());
+        setCustomerDetails(prev => ({ ...prev, orders: updatedOrders }));
+      } else {
+        const errData = await res.json();
+        alert(errData.message || "Failed to cancel item.");
+      }
+    } catch (err) {
+      console.error("Cancel error:", err);
+    }
+  };
+
 
   return (
     <div style={styles.container}>
@@ -72,7 +106,6 @@ function AdminLiveChatPage({ user }) {
         <h3 style={styles.panelTitle}>Conversations</h3>
 
         {activeChats.map((c) => {
-          // ✅ EKLENDİ: Sohbet kapalıysa stil değiştirme mantığı
           const isClosed = c.status === 'closed';
           const isSelected = selectedChat?.chatId === c.chatId;
 
@@ -81,19 +114,16 @@ function AdminLiveChatPage({ user }) {
               key={c.chatId}
               style={{
                 ...styles.customerItem,
-                // Seçiliyse mavi, kapalıysa gri, normalse şeffaf
                 background: isSelected 
                   ? "#eef6ff" 
                   : (isClosed ? "#f9f9f9" : "transparent"),
                 border: isSelected ? "1px solid #007bff" : "1px solid transparent",
-                opacity: isClosed && !isSelected ? 0.6 : 1, // Kapalılar biraz soluk dursun
+                opacity: isClosed && !isSelected ? 0.6 : 1,
               }}
               onClick={() => setSelectedChat(c)}
             >
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                 <div style={{ fontWeight: "bold" }}>{c.name}</div>
-                
-                {/* Durum Rozeti (Active/Closed) */}
                 <span style={{
                     fontSize: 10, 
                     padding: "2px 6px", 
@@ -117,7 +147,6 @@ function AdminLiveChatPage({ user }) {
       <div style={styles.middlePanel}>
         {selectedChat ? (
           <>
-            {/* Eğer sohbet kapalıysa üstte bir uyarı gösterelim */}
             {selectedChat.status === 'closed' && (
                <div style={{ padding: 10, background: '#fff3cd', color: '#856404', marginBottom: 10, borderRadius: 5, fontSize: 13, textAlign:'center' }}>
                  ⚠️ This chat has been ended by the customer.
@@ -128,7 +157,6 @@ function AdminLiveChatPage({ user }) {
               supportUser={user}
               chatId={selectedChat.chatId}
               customerName={selectedChat.name}
-              // Chat kapalıysa Admin'in yazmasını engellemek istersen prop olarak geçebilirsin:
               isChatClosed={selectedChat.status === 'closed'} 
             />
           </>
@@ -167,31 +195,33 @@ function AdminLiveChatPage({ user }) {
                     </span>
                   </div>
 
-                  {/* ✅ SİPARİŞ EDİLEN ÜRÜNLERİN FOTOĞRAFLARI */}
                   <div style={styles.productList}>
-                    {o.items && o.items.map((item, idx) => (
-                      <div key={idx} style={styles.productItem}>
-                        <img
-                          src={item.imageUrl || item.image} 
-                          alt={item.name}
-                          style={{
-                            width: "45px",
-                            height: "45px",
-                            objectFit: "cover",
-                            borderRadius: "8px",
-                            border: "1px solid #ddd",
-                            flexShrink: 0,
-                          }}
-                          onError={(e) => {
-                            e.target.src = "https://via.placeholder.com/80?text=No+Image";
-                          }}
-                        />
-                        <div style={styles.productInfo}>
-                          <span style={styles.productName}>{item.name}</span>
-                          <span style={styles.productQty}>Qty: {item.quantity}</span>
+                    {o.items && o.items.map((item, idx) => {
+                      const actualProductId = item.productId?._id || item.productId || "N/A";
+                      const pSize = item.size || ""; // null ise boş string gönder
+
+                      return (
+                        <div key={idx} style={styles.productItem}>
+                          <img src={item.imageUrl || item.image} alt={item.name} style={styles.productImg} />
+                          <div style={styles.productInfo}>
+                            <span style={styles.productName}>{item.name}</span>
+                            <span style={styles.productQty}>Qty: {item.quantity} | Size: {item.size || "-"}</span>
+                            <span style={{ fontSize: "10px", color: "#888", marginBottom: "2px" }}>
+                              ID: {actualProductId}
+                            </span>
+                            
+                            {o.status !== "Cancelled" && (
+                              <button
+                                onClick={() => handleCancelItem(o._id, actualProductId, pSize, item.name)}
+                                style={styles.cancelItemBtn}
+                              >
+                                Cancel Item
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div style={styles.orderFooter}>
@@ -211,9 +241,7 @@ function AdminLiveChatPage({ user }) {
   );
 }
 
-// ... styles objesi aynı kalabilir ...
 const styles = {
-  // ... senin mevcut stil kodların ...
   container: {
     display: "flex",
     height: "calc(100vh - 80px)",
@@ -270,18 +298,41 @@ const styles = {
     fontWeight: "bold",
     textTransform: "uppercase",
   },
-  productList: { display: "flex", flexDirection: "column", gap: 10 },
-  productItem: { display: "flex", gap: 12, alignItems: "center" },
+  productList: { 
+    display: "flex", 
+    flexDirection: "column", 
+    gap: 10, 
+    marginTop: 10 
+  },
+  productItem: { 
+    display: "flex", 
+    gap: 12, 
+    alignItems: "flex-start",
+    padding: "5px 0"
+  },
   productImg: {
-    width: 45,
-    height: 45,
-    borderRadius: 8,
+    width: "45px",
+    height: "45px",
     objectFit: "cover",
+    borderRadius: "8px",
     border: "1px solid #ddd",
+    flexShrink: 0,
   },
   productInfo: { display: "flex", flexDirection: "column" },
   productName: { fontSize: 13, fontWeight: 500 },
   productQty: { fontSize: 11, color: "#666" },
+  cancelItemBtn: {
+    marginTop: 5,
+    padding: "2px 8px",
+    fontSize: "10px",
+    backgroundColor: "#ff4d4d",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+    width: "fit-content",
+    fontWeight: "bold"
+  },
   orderFooter: {
     textAlign: "right",
     marginTop: 12,
@@ -299,40 +350,6 @@ const styles = {
     fontSize: 13,
     marginTop: 20,
   },
-
-  // styles objesinin sonuna veya uygun yerine ekle:
-  productList: { 
-    display: "flex", 
-    flexDirection: "column", 
-    gap: 10, 
-    marginTop: 10 
-  },
-  productItem: { 
-    display: "flex", 
-    gap: 12, 
-    alignItems: "center",
-    padding: "5px 0"
-  },
-  productImg: {
-    width: 45,
-    height: 45,
-    borderRadius: 8,
-    objectFit: "cover",
-    border: "1px solid #ddd",
-  },
-  productInfo: { 
-    display: "flex", 
-    flexDirection: "column" 
-  },
-  productName: { 
-    fontSize: 13, 
-    fontWeight: 500 
-  },
-  productQty: { 
-    fontSize: 11, 
-    color: "#666" 
-  },
-
 };
 
 export default AdminLiveChatPage;
