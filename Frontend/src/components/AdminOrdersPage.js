@@ -1,3 +1,4 @@
+// Frontend/src/components/AdminOrdersPage.js
 import React, { useEffect, useMemo, useState } from "react";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5050";
@@ -44,7 +45,6 @@ function todayISO() {
   return d.toISOString().slice(0, 10);
 }
 
-/** Simple SVG line chart (no library) */
 function LineChart({ data, width = 920, height = 240, valueKey = "profit", title = "Profit Chart" }) {
   const padding = 30;
   const W = width;
@@ -72,7 +72,6 @@ function LineChart({ data, width = 920, height = 240, valueKey = "profit", title
     })
     .join(" ");
 
-  // show 1st, mid, last date labels
   const labelIdx = [0, Math.floor((safe.length - 1) / 2), safe.length - 1].filter(
     (v, i, a) => a.indexOf(v) === i
   );
@@ -82,18 +81,14 @@ function LineChart({ data, width = 920, height = 240, valueKey = "profit", title
       <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
 
       <svg width={W} height={H} style={{ display: "block", width: "100%", overflow: "visible" }}>
-        {/* axes */}
         <line x1={padding} y1={padding} x2={padding} y2={H - padding} stroke="black" strokeWidth="1" />
         <line x1={padding} y1={H - padding} x2={W - padding} y2={H - padding} stroke="black" strokeWidth="1" />
 
-        {/* polyline */}
         <polyline fill="none" stroke="black" strokeWidth="2" points={points} />
 
-        {/* min/max labels */}
         <text x={padding + 6} y={padding + 10} fontSize="12">{`max: ${maxV.toFixed(2)}`}</text>
         <text x={padding + 6} y={H - padding - 6} fontSize="12">{`min: ${minV.toFixed(2)}`}</text>
 
-        {/* date labels */}
         {labelIdx.map((i) => (
           <text
             key={i}
@@ -111,37 +106,30 @@ function LineChart({ data, width = 920, height = 240, valueKey = "profit", title
 }
 
 export default function AdminOrdersPage() {
-  // tab: invoices | discount | prices | analytics
   const [tab, setTab] = useState("invoices");
 
-  // date range
-  const [from, setFrom] = useState(""); // YYYY-MM-DD
+  const [from, setFrom] = useState("");
   const [to, setTo] = useState(todayISO());
 
-  // invoices
   const [invoices, setInvoices] = useState([]);
   const [invLoading, setInvLoading] = useState(false);
   const [invError, setInvError] = useState("");
 
-  // products
   const [products, setProducts] = useState([]);
   const [prodLoading, setProdLoading] = useState(false);
   const [prodError, setProdError] = useState("");
 
-  // discount form
   const [selectedIds, setSelectedIds] = useState([]);
   const [discountRate, setDiscountRate] = useState("0.20");
   const [discMsg, setDiscMsg] = useState("");
   const [discErr, setDiscErr] = useState("");
   const [discLoading, setDiscLoading] = useState(false);
 
-  // prices (manual set)
-  const [priceEdits, setPriceEdits] = useState({}); // { [productId]: "123.45" }
+  const [priceEdits, setPriceEdits] = useState({});
   const [priceMsg, setPriceMsg] = useState("");
   const [priceErr, setPriceErr] = useState("");
   const [priceLoading, setPriceLoading] = useState(false);
 
-  // analytics
   const [analytics, setAnalytics] = useState(null);
   const [anLoading, setAnLoading] = useState(false);
   const [anError, setAnError] = useState("");
@@ -197,7 +185,6 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     loadInvoices();
     loadProducts();
-    
   }, []);
 
   const rows = useMemo(() => {
@@ -290,7 +277,6 @@ export default function AdminOrdersPage() {
         Invoices, discounts, prices, and analytics (date range).
       </div>
 
-      {/* Tabs */}
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <button
           onClick={() => setTab("invoices")}
@@ -342,7 +328,6 @@ export default function AdminOrdersPage() {
         </button>
       </div>
 
-      {/* Date Range Controls (Invoices/Analytics için) */}
       <div
         style={{
           display: "flex",
@@ -403,12 +388,34 @@ export default function AdminOrdersPage() {
         )}
       </div>
 
-      {/* INVOICES */}
+      {/* INVOICES TAB */}
       {tab === "invoices" && (
         <div>
           <h3 style={{ marginBottom: 8 }}>Invoices</h3>
-          {invLoading && <div>Loading invoices...</div>}
-          {invError && <div style={{ color: "crimson" }}>{invError}</div>}
+
+          {invLoading && (
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p style={{ marginTop: "10px" }}>Loading invoices...</p>
+            </div>
+          )}
+
+          {invError && (
+            <div
+              style={{
+                padding: "15px",
+                marginBottom: "20px",
+                backgroundColor: "#fee",
+                border: "1px solid #fcc",
+                borderRadius: "8px",
+                color: "#c33",
+              }}
+            >
+              <strong>Error:</strong> {invError}
+            </div>
+          )}
 
           {!invLoading && !invError && (
             <div style={{ overflowX: "auto" }}>
@@ -438,8 +445,19 @@ export default function AdminOrdersPage() {
               </table>
 
               {!rows.length && (
-                <div style={{ marginTop: 10, opacity: 0.8 }}>
-                  No invoices in selected range.
+                <div
+                  style={{
+                    padding: "40px",
+                    textAlign: "center",
+                    backgroundColor: "#f9f9f9",
+                    borderRadius: "8px",
+                    border: "1px solid #e5e5e5",
+                    marginTop: "10px",
+                  }}
+                >
+                  <p style={{ fontSize: "16px", color: "#666" }}>
+                    No invoices in selected range.
+                  </p>
                 </div>
               )}
             </div>
@@ -447,142 +465,264 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-      {/* DISCOUNTS */}
+      {/* DISCOUNTS TAB */}
       {tab === "discount" && (
         <div>
           <h3 style={{ marginBottom: 8 }}>Apply Discount to Selected Products</h3>
 
-          {prodLoading && <div>Loading products...</div>}
-          {prodError && <div style={{ color: "crimson" }}>{prodError}</div>}
+          {prodLoading && (
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p style={{ marginTop: "10px" }}>Loading products...</p>
+            </div>
+          )}
 
-          <div style={{ marginBottom: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              Discount Rate (0.20 = 20%)
-              <input
-                value={discountRate}
-                onChange={(e) => setDiscountRate(e.target.value)}
-                style={{ width: 120 }}
-              />
-            </label>
-            <button
-              onClick={applyDiscount}
-              disabled={discLoading}
+          {prodError && (
+            <div
               style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid #ccc",
-                background: "white",
-                cursor: "pointer",
+                padding: "15px",
+                marginBottom: "20px",
+                backgroundColor: "#fee",
+                border: "1px solid #fcc",
+                borderRadius: "8px",
+                color: "#c33",
               }}
             >
-              {discLoading ? "Applying..." : "Apply Discount"}
-            </button>
-          </div>
+              <strong>Error:</strong> {prodError}
+            </div>
+          )}
 
-          {discMsg && <div style={{ color: "green", marginBottom: 10 }}>{discMsg}</div>}
-          {discErr && <div style={{ color: "crimson", marginBottom: 10 }}>{discErr}</div>}
+          {!prodLoading && !prodError && (
+            <>
+              <div style={{ marginBottom: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  Discount Rate (0.20 = 20%)
+                  <input
+                    value={discountRate}
+                    onChange={(e) => setDiscountRate(e.target.value)}
+                    style={{ width: 120 }}
+                  />
+                </label>
+                <button
+                  onClick={applyDiscount}
+                  disabled={discLoading}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #ccc",
+                    background: "white",
+                    cursor: discLoading ? "not-allowed" : "pointer",
+                    opacity: discLoading ? 0.6 : 1,
+                  }}
+                >
+                  {discLoading ? "Applying..." : "Apply Discount"}
+                </button>
+              </div>
 
-          <div style={{ overflowX: "auto", border: "1px solid #eee", borderRadius: 10 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                  <th style={{ padding: 10 }}>Select</th>
-                  <th style={{ padding: 10 }}>Name</th>
-                  <th style={{ padding: 10 }}>Category</th>
-                  <th style={{ padding: 10 }}>Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => (
-                  <tr key={p._id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <td style={{ padding: 10 }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(p._id)}
-                        onChange={() => toggleSelected(p._id)}
-                      />
-                    </td>
-                    <td style={{ padding: 10 }}>{p.name}</td>
-                    <td style={{ padding: 10 }}>{p.category}</td>
-                    <td style={{ padding: 10 }}>{Number(p.price ?? 0).toFixed(2)} TL</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              {discMsg && (
+                <div
+                  style={{
+                    padding: "12px",
+                    marginBottom: "10px",
+                    backgroundColor: "#d4edda",
+                    border: "1px solid #c3e6cb",
+                    borderRadius: "8px",
+                    color: "#155724",
+                  }}
+                >
+                  {discMsg}
+                </div>
+              )}
 
-            {!products.length && !prodLoading && (
-              <div style={{ padding: 12, opacity: 0.8 }}>No products found.</div>
-            )}
-          </div>
+              {discErr && (
+                <div
+                  style={{
+                    padding: "12px",
+                    marginBottom: "10px",
+                    backgroundColor: "#fee",
+                    border: "1px solid #fcc",
+                    borderRadius: "8px",
+                    color: "#c33",
+                  }}
+                >
+                  <strong>Error:</strong> {discErr}
+                </div>
+              )}
+
+              <div style={{ overflowX: "auto", border: "1px solid #eee", borderRadius: 10 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+                      <th style={{ padding: 10 }}>Select</th>
+                      <th style={{ padding: 10 }}>Name</th>
+                      <th style={{ padding: 10 }}>Category</th>
+                      <th style={{ padding: 10 }}>Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((p) => (
+                      <tr key={p._id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td style={{ padding: 10 }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(p._id)}
+                            onChange={() => toggleSelected(p._id)}
+                          />
+                        </td>
+                        <td style={{ padding: 10 }}>{p.name}</td>
+                        <td style={{ padding: 10 }}>{p.category}</td>
+                        <td style={{ padding: 10 }}>{Number(p.price ?? 0).toFixed(2)} TL</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {!products.length && (
+                  <div
+                    style={{
+                      padding: "40px",
+                      textAlign: "center",
+                      backgroundColor: "#f9f9f9",
+                    }}
+                  >
+                    <p style={{ fontSize: "16px", color: "#666" }}>No products found.</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {/* PRICES */}
+      {/* PRICES TAB */}
       {tab === "prices" && (
         <div>
           <h3 style={{ marginBottom: 8 }}>Set Product Prices (Manual)</h3>
           <div style={{ opacity: 0.8, marginBottom: 10 }}>
-            Enter new prices and click “Save Prices”.
+            Enter new prices and click "Save Prices".
           </div>
 
-          {prodLoading && <div>Loading products...</div>}
-          {prodError && <div style={{ color: "crimson" }}>{prodError}</div>}
+          {prodLoading && (
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p style={{ marginTop: "10px" }}>Loading products...</p>
+            </div>
+          )}
 
-          <button
-            onClick={savePrices}
-            disabled={priceLoading}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "1px solid #ccc",
-              background: "white",
-              cursor: "pointer",
-              marginBottom: 12,
-            }}
-          >
-            {priceLoading ? "Saving..." : "Save Prices"}
-          </button>
+          {prodError && (
+            <div
+              style={{
+                padding: "15px",
+                marginBottom: "20px",
+                backgroundColor: "#fee",
+                border: "1px solid #fcc",
+                borderRadius: "8px",
+                color: "#c33",
+              }}
+            >
+              <strong>Error:</strong> {prodError}
+            </div>
+          )}
 
-          {priceMsg && <div style={{ color: "green", marginBottom: 10 }}>{priceMsg}</div>}
-          {priceErr && <div style={{ color: "crimson", marginBottom: 10 }}>{priceErr}</div>}
+          {!prodLoading && !prodError && (
+            <>
+              <button
+                onClick={savePrices}
+                disabled={priceLoading}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #ccc",
+                  background: "white",
+                  cursor: priceLoading ? "not-allowed" : "pointer",
+                  marginBottom: 12,
+                  opacity: priceLoading ? 0.6 : 1,
+                }}
+              >
+                {priceLoading ? "Saving..." : "Save Prices"}
+              </button>
 
-          <div style={{ overflowX: "auto", border: "1px solid #eee", borderRadius: 10 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                  <th style={{ padding: 10 }}>Name</th>
-                  <th style={{ padding: 10 }}>Current Price</th>
-                  <th style={{ padding: 10 }}>New Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => (
-                  <tr key={p._id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <td style={{ padding: 10 }}>{p.name}</td>
-                    <td style={{ padding: 10 }}>{Number(p.price ?? 0).toFixed(2)} TL</td>
-                    <td style={{ padding: 10 }}>
-                      <input
-                        value={priceEdits[p._id] ?? ""}
-                        placeholder="e.g. 199.99"
-                        onChange={(e) =>
-                          setPriceEdits((prev) => ({ ...prev, [p._id]: e.target.value }))
-                        }
-                        style={{ width: 140 }}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              {priceMsg && (
+                <div
+                  style={{
+                    padding: "12px",
+                    marginBottom: "10px",
+                    backgroundColor: "#d4edda",
+                    border: "1px solid #c3e6cb",
+                    borderRadius: "8px",
+                    color: "#155724",
+                  }}
+                >
+                  {priceMsg}
+                </div>
+              )}
 
-            {!products.length && !prodLoading && (
-              <div style={{ padding: 12, opacity: 0.8 }}>No products found.</div>
-            )}
-          </div>
+              {priceErr && (
+                <div
+                  style={{
+                    padding: "12px",
+                    marginBottom: "10px",
+                    backgroundColor: "#fee",
+                    border: "1px solid #fcc",
+                    borderRadius: "8px",
+                    color: "#c33",
+                  }}
+                >
+                  <strong>Error:</strong> {priceErr}
+                </div>
+              )}
+
+              <div style={{ overflowX: "auto", border: "1px solid #eee", borderRadius: 10 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+                      <th style={{ padding: 10 }}>Name</th>
+                      <th style={{ padding: 10 }}>Current Price</th>
+                      <th style={{ padding: 10 }}>New Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((p) => (
+                      <tr key={p._id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td style={{ padding: 10 }}>{p.name}</td>
+                        <td style={{ padding: 10 }}>{Number(p.price ?? 0).toFixed(2)} TL</td>
+                        <td style={{ padding: 10 }}>
+                          <input
+                            value={priceEdits[p._id] ?? ""}
+                            placeholder="e.g. 199.99"
+                            onChange={(e) =>
+                              setPriceEdits((prev) => ({ ...prev, [p._id]: e.target.value }))
+                            }
+                            style={{ width: 140 }}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {!products.length && (
+                  <div
+                    style={{
+                      padding: "40px",
+                      textAlign: "center",
+                      backgroundColor: "#f9f9f9",
+                    }}
+                  >
+                    <p style={{ fontSize: "16px", color: "#666" }}>No products found.</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {/* ANALYTICS */}
+      {/* ANALYTICS TAB */}
       {tab === "analytics" && (
         <div>
           <h3 style={{ marginBottom: 8 }}>Revenue / Cost / Profit</h3>
@@ -601,8 +741,29 @@ export default function AdminOrdersPage() {
             Refresh Analytics
           </button>
 
-          {anLoading && <div>Loading analytics...</div>}
-          {anError && <div style={{ color: "crimson" }}>{anError}</div>}
+          {anLoading && (
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p style={{ marginTop: "10px" }}>Loading analytics...</p>
+            </div>
+          )}
+
+          {anError && (
+            <div
+              style={{
+                padding: "15px",
+                marginBottom: "20px",
+                backgroundColor: "#fee",
+                border: "1px solid #fcc",
+                borderRadius: "8px",
+                color: "#c33",
+              }}
+            >
+              <strong>Error:</strong> {anError}
+            </div>
+          )}
 
           {analytics && !anLoading && !anError && (
             <>
@@ -621,7 +782,6 @@ export default function AdminOrdersPage() {
                 </div>
               </div>
 
-              {/* ✅ CHART */}
               <LineChart
                 data={analytics.series || []}
                 valueKey="profit"
@@ -651,8 +811,16 @@ export default function AdminOrdersPage() {
                 </table>
 
                 {(!analytics.series || !analytics.series.length) && (
-                  <div style={{ padding: 12, opacity: 0.8 }}>
-                    No analytics data in selected range.
+                  <div
+                    style={{
+                      padding: "40px",
+                      textAlign: "center",
+                      backgroundColor: "#f9f9f9",
+                    }}
+                  >
+                    <p style={{ fontSize: "16px", color: "#666" }}>
+                      No analytics data in selected range.
+                    </p>
                   </div>
                 )}
               </div>
