@@ -7,6 +7,28 @@ import { sendRefundApprovalEmail } from "../utils/email.js";
 
 const router = express.Router();
 
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+function pushReturnHistory(ret, status, note, byUserId) {
+  ret.statusHistory = ret.statusHistory || [];
+  ret.statusHistory.push({
+    status,
+    note: note || "",
+    by: byUserId || null,
+    at: new Date(),
+  });
+}
+
+function matchOrderItem(order, productId, size) {
+  const items = order?.items || [];
+  return items.find((it) => {
+    const itemProdId = it.product || it.productId;
+    const sameProd = String(itemProdId) === String(productId);
+    const sameSize = !size || String(it.size || "") === String(size || "");
+    return sameProd && sameSize;
+  });
+}
+
 /**
  * CUSTOMER: Create return request
  * POST /api/returns
@@ -14,8 +36,6 @@ const router = express.Router();
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { orderId, productId, size, quantity, reason } = req.body;
-
-    console.log("👉 İade İsteği Geldi:", { orderId, productId, reason });
 
     if (!orderId || !productId || !reason) {
       return res.status(400).json({ message: "Missing required fields." });
@@ -25,36 +45,21 @@ router.post("/", requireAuth, async (req, res) => {
 
     const order = await Order.findById(orderId);
     if (!order) {
-      console.log("❌ Sipariş bulunamadı.");
       return res.status(404).json({ message: "Order not found." });
     }
 
     if (order.user?.toString() !== userId.toString()) {
-      console.log("❌ Sipariş bu kullanıcıya ait değil.");
       return res.status(403).json({ message: "Not authorized." });
     }
 
-    // ✅ Must be delivered to request return (Kod2 özelliği)
     const ship = String(order.shippingStatus || "").toLowerCase();
     if (ship !== "delivered") {
-      return res
-        .status(400)
-        .json({ message: "You can only return delivered orders." });
+      return res.status(400).json({ message: "You can only return delivered orders." });
     }
 
-    // ✅ Validate item exists in order (productId / product toleransı: Kod1)
-    const orderItem = (order.items || []).find((it) => {
-      const itemProdId = it.product || it.productId;
-      const sameProd = String(itemProdId) === String(productId);
-      const sameSize = !size || String(it.size || "") === String(size || "");
-      return sameProd && sameSize;
-    });
-
+    const orderItem = matchOrderItem(order, productId, size);
     if (!orderItem) {
-      console.log("❌ Ürün sipariş içinde bulunamadı. Order Items:", order.items);
-      return res
-        .status(400)
-        .json({ message: "This product is not part of the order." });
+      return res.status(400).json({ message: "This product is not part of the order." });
     }
 
     const finalSize = (size || orderItem.size || "").toString();
@@ -67,7 +72,6 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Invalid quantity." });
     }
 
-    // ✅ Prevent duplicates (Kod2: order+product+size)
     const existingReturn = await ReturnRequest.findOne({
       order: orderId,
       product: productId,
@@ -75,9 +79,7 @@ router.post("/", requireAuth, async (req, res) => {
     });
 
     if (existingReturn) {
-      return res
-        .status(400)
-        .json({ message: "Return request already created for this item." });
+      return res.status(400).json({ message: "Return request already created for this item." });
     }
 
     const returnRequest = await ReturnRequest.create({
@@ -88,9 +90,17 @@ router.post("/", requireAuth, async (req, res) => {
       quantity: finalQty,
       reason,
       status: "Requested",
+      requestedAt: new Date(),
+      statusHistory: [
+        {
+          status: "Requested",
+          note: "Request created",
+          by: userId,
+          at: new Date(),
+        },
+      ],
     });
 
-    // ✅ Shipping history note (Kod1 + Kod2)
     order.shippingHistory = order.shippingHistory || [];
     order.shippingHistory.push({
       date: new Date(),
@@ -98,15 +108,9 @@ router.post("/", requireAuth, async (req, res) => {
     });
     await order.save();
 
-    // ✅ IMPORTANT:
-    // Stock should NOT be increased here.
-    // Stock should be increased only after Sales Manager approves.
-    // (Kod2 yaklaşımı: doğru akış)
-
-    console.log("✅ İade talebi başarıyla oluşturuldu.");
     return res.status(201).json(returnRequest);
   } catch (err) {
-    console.error("🔥 RETURN REQUEST ERROR:", err);
+    console.error("RETURN REQUEST ERROR:", err);
     return res.status(500).json({ message: "Server error: " + err.message });
   }
 });
@@ -114,7 +118,6 @@ router.post("/", requireAuth, async (req, res) => {
 /**
  * CUSTOMER: My returns
  * GET /api/returns/my
- * -> Kod1'in imageUrl fix'i korunur
  */
 router.get("/my", requireAuth, async (req, res) => {
   try {
@@ -166,12 +169,13 @@ router.get("/", requireSalesManager, async (_req, res) => {
 });
 
 /**
- * SALES MANAGER: Approve refund
+ * SALES MANAGER: Approve return
  * PATCH /api/returns/:id/approve
  */
 router.patch("/:id/approve", requireSalesManager, async (req, res) => {
   try {
     const returnId = req.params.id;
+    const managerId = req.user?.id || req.user?._id || null;
 
     const ret = await ReturnRequest.findById(returnId)
       .populate("user", "name email")
@@ -193,7 +197,6 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
       return res.status(400).json({ message: "Order not found for this return." });
     }
 
-    // Must be delivered
     const ship = String(order.shippingStatus || "").toLowerCase();
     if (ship !== "delivered") {
       return res.status(400).json({
@@ -201,14 +204,7 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
       });
     }
 
-    // purchase-time price is order.items[].price (discount-applied)
-    const orderItem = (order.items || []).find((it) => {
-      const itemProdId = it.product || it.productId;
-      const sameProd = String(itemProdId) === String(ret.product?._id || ret.product);
-      const sameSize = !ret.size || String(it.size || "") === String(ret.size || "");
-      return sameProd && sameSize;
-    });
-
+    const orderItem = matchOrderItem(order, ret.product?._id || ret.product, ret.size);
     if (!orderItem) {
       return res.status(400).json({
         message: "Matching order item not found for refund calculation.",
@@ -216,15 +212,23 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
     }
 
     const qty = Number(ret.quantity || 1);
-    const refundedAmount = Number(orderItem.price || 0) * qty;
 
-    // Update return record
+    const unitSale =
+      orderItem.unitPriceAtPurchase != null
+        ? Number(orderItem.unitPriceAtPurchase)
+        : Number(orderItem.price || 0);
+
+    const refundedAmount = round2(unitSale * qty);
+
     ret.status = "Approved";
-    ret.refundedAmount = Math.round(refundedAmount * 100) / 100;
+    ret.refundedAmount = refundedAmount;
     ret.processedAt = new Date();
+    ret.approvedAt = new Date();
+
+    pushReturnHistory(ret, "Approved", "Approved by sales manager", managerId);
+
     await ret.save();
 
-    // ✅ Update stock (now)  -> Kod2'nin doğru akışı
     if (ret.size) {
       await Product.updateOne(
         { _id: ret.product?._id || ret.product },
@@ -232,26 +236,28 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
       );
     }
 
-    // Shipping history note
     order.shippingHistory = order.shippingHistory || [];
     order.shippingHistory.push({
       date: new Date(),
-      status: `Refund approved (Return ${ret._id}) - ${ret.refundedAmount} TL`,
+      status: `Return approved (Return ${ret._id}) - ${ret.refundedAmount} TL`,
     });
     await order.save();
 
-    // Email
     const to = ret.user?.email;
     if (to) {
-      await sendRefundApprovalEmail({
-        to,
-        name: ret.user?.name || "Customer",
-        returnId: String(ret._id),
-        orderId: String(order._id),
-        productName: ret.product?.name || "Product",
-        quantity: qty,
-        refundedAmount: ret.refundedAmount,
-      });
+      try {
+        await sendRefundApprovalEmail({
+          to,
+          name: ret.user?.name || "Customer",
+          returnId: String(ret._id),
+          orderId: String(order._id),
+          productName: ret.product?.name || "Product",
+          quantity: qty,
+          refundedAmount: ret.refundedAmount,
+        });
+      } catch (emailErr) {
+        console.error("REFUND EMAIL ERROR:", emailErr);
+      }
     }
 
     return res.json({
@@ -271,7 +277,9 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
 router.patch("/:id/reject", requireSalesManager, async (req, res) => {
   try {
     const returnId = req.params.id;
-    const reason = String(req.body?.reason || "");
+    const managerId = req.user?.id || req.user?._id || null;
+
+    const reason = String(req.body?.reason || "").trim();
 
     const ret = await ReturnRequest.findById(returnId);
     if (!ret) {
@@ -287,11 +295,107 @@ router.patch("/:id/reject", requireSalesManager, async (req, res) => {
     ret.status = "Rejected";
     ret.rejectReason = reason;
     ret.processedAt = new Date();
+    ret.rejectedAt = new Date();
+
+    pushReturnHistory(ret, "Rejected", reason ? `Rejected: ${reason}` : "Rejected", managerId);
+
     await ret.save();
 
     return res.json({ message: "Return request rejected.", returnRequest: ret });
   } catch (err) {
     console.error("REJECT RETURN ERROR:", err);
+    return res.status(500).json({ message: "Server error: " + err.message });
+  }
+});
+
+/**
+ * SALES MANAGER: Mark received
+ * PATCH /api/returns/:id/received
+ */
+router.patch("/:id/received", requireSalesManager, async (req, res) => {
+  try {
+    const managerId = req.user?.id || req.user?._id || null;
+
+    const ret = await ReturnRequest.findById(req.params.id);
+    if (!ret) return res.status(404).json({ message: "Return request not found." });
+
+    if (ret.status !== "Approved") {
+      return res.status(400).json({ message: `Return must be Approved (current: ${ret.status}).` });
+    }
+
+    ret.status = "Received";
+    ret.receivedAt = new Date();
+    pushReturnHistory(ret, "Received", "Item received", managerId);
+
+    await ret.save();
+    return res.json({ message: "Return marked as received.", returnRequest: ret });
+  } catch (err) {
+    console.error("RECEIVED RETURN ERROR:", err);
+    return res.status(500).json({ message: "Server error: " + err.message });
+  }
+});
+
+/**
+ * SALES MANAGER: Finalize refund
+ * PATCH /api/returns/:id/refund
+ * Body: { refundedAmount? }
+ */
+router.patch("/:id/refund", requireSalesManager, async (req, res) => {
+  try {
+    const managerId = req.user?.id || req.user?._id || null;
+
+    const ret = await ReturnRequest.findById(req.params.id);
+    if (!ret) return res.status(404).json({ message: "Return request not found." });
+
+    if (!(ret.status === "Approved" || ret.status === "Received")) {
+      return res.status(400).json({ message: `Return must be Approved/Received (current: ${ret.status}).` });
+    }
+
+    const override = req.body?.refundedAmount;
+    if (override != null) {
+      const n = Number(override);
+      if (!(n >= 0)) return res.status(400).json({ message: "refundedAmount must be a valid number." });
+      ret.refundedAmount = round2(n);
+    }
+
+    ret.status = "Refunded";
+    ret.refundedAt = new Date();
+    ret.processedAt = new Date();
+
+    pushReturnHistory(ret, "Refunded", "Refund processed", managerId);
+
+    await ret.save();
+    return res.json({ message: "Refund marked as processed.", returnRequest: ret });
+  } catch (err) {
+    console.error("REFUND RETURN ERROR:", err);
+    return res.status(500).json({ message: "Server error: " + err.message });
+  }
+});
+
+/**
+ * SALES MANAGER: Complete return
+ * PATCH /api/returns/:id/complete
+ */
+router.patch("/:id/complete", requireSalesManager, async (req, res) => {
+  try {
+    const managerId = req.user?.id || req.user?._id || null;
+
+    const ret = await ReturnRequest.findById(req.params.id);
+    if (!ret) return res.status(404).json({ message: "Return request not found." });
+
+    if (!(ret.status === "Refunded" || ret.status === "Received" || ret.status === "Approved")) {
+      return res.status(400).json({ message: `Cannot complete (current: ${ret.status}).` });
+    }
+
+    ret.status = "Completed";
+    ret.completedAt = new Date();
+
+    pushReturnHistory(ret, "Completed", "Return completed", managerId);
+
+    await ret.save();
+    return res.json({ message: "Return completed.", returnRequest: ret });
+  } catch (err) {
+    console.error("COMPLETE RETURN ERROR:", err);
     return res.status(500).json({ message: "Server error: " + err.message });
   }
 });
