@@ -11,17 +11,20 @@ const productSchema = new mongoose.Schema(
 
     description: { type: String, default: "" },
 
-    // Customer-facing price (may reflect discounts).
     price: { type: Number, required: true, min: 0 },
 
     category: { type: String, required: true },
     imageUrl: { type: String, default: "" },
 
-    // Base price used to compute discounts reliably.
+    // Base price is the non-discounted reference.
     basePrice: { type: Number, default: null, min: 0 },
-    discountRate: { type: Number, default: 0, min: 0, max: 1 }, // 0..1
 
-    // Cost is used for profit calculations.
+    // Optional legacy/support field used by some routes.
+    originalPrice: { type: Number, default: null, min: 0 },
+
+    // Stored as 0..1.
+    discountRate: { type: Number, default: 0, min: 0, max: 1 },
+
     cost: { type: Number, default: null, min: 0 },
 
     sizes: {
@@ -42,17 +45,19 @@ productSchema.pre("validate", function (next) {
   if (this.basePrice == null && this.price != null) {
     this.basePrice = this.price;
   }
+  if (this.originalPrice == null && this.basePrice != null) {
+    this.originalPrice = this.basePrice;
+  }
   if (this.discountRate == null) {
     this.discountRate = 0;
   }
   next();
 });
 
-// Helper for server-side calculations without changing stored fields.
 productSchema.methods.getEffectiveUnitPrice = function () {
   const list = this.basePrice != null ? Number(this.basePrice) : Number(this.price);
   const rate = Number(this.discountRate) || 0;
-  return Math.max(0, list * (1 - rate));
+  return Math.max(0, Math.round(list * (1 - rate) * 100) / 100);
 };
 
 export default mongoose.model("Product", productSchema);
