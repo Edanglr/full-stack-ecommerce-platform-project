@@ -69,6 +69,12 @@ function RequireRole({ user, roles, children }) {
   return children;
 }
 
+// ✅ Login gerektiren sayfalar için guard
+function RequireAuth({ user, children }) {
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
 // ==================== APP ====================
 function App() {
   const [user, setUser] = useState(null);
@@ -119,13 +125,63 @@ function App() {
             <Route path="/cart" element={<CartPage />} />
             <Route path="/product/:id" element={<ProductDetail />} />
 
-            {/* Customer pages */}
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/payment-methods" element={<PaymentMethodsPage />} />
-            <Route path="/returns" element={<ReturnsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/favorites" element={<FavoritesPage />} />
-            <Route path="/orders" element={<OrderHistoryPage />} />
+            {/* ✅ Customer pages (login required) */}
+            <Route
+              path="/profile"
+              element={
+                <RequireAuth user={user}>
+                  <ProfilePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/payment-methods"
+              element={
+                <RequireAuth user={user}>
+                  <PaymentMethodsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/returns"
+              element={
+                <RequireAuth user={user}>
+                  <ReturnsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <RequireAuth user={user}>
+                  <SettingsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/favorites"
+              element={
+                <RequireAuth user={user}>
+                  <FavoritesPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/orders"
+              element={
+                <RequireAuth user={user}>
+                  <OrderHistoryPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/payment"
+              element={
+                <RequireAuth user={user}>
+                  <PaymentPage />
+                </RequireAuth>
+              }
+            />
 
             {/* ADMIN: Support Agent */}
             <Route
@@ -186,8 +242,15 @@ function App() {
               }
             />
 
-            <Route path="/invoice/:orderId" element={<InvoicePage />} />
-            <Route path="/payment" element={<PaymentPage />} />
+            {/* ✅ Invoice sayfası için de auth kontrolü eklendi */}
+            <Route
+              path="/invoice/:orderId"
+              element={
+                <RequireAuth user={user}>
+                  <InvoicePage />
+                </RequireAuth>
+              }
+            />
           </Routes>
 
           {/* 🔴 GLOBAL LIVE CHAT (sadece login olmuş kullanıcı) */}
