@@ -30,6 +30,19 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
   const isSalesManager = role === "salesManager" || isLegacyManager;
   const isSupportAgent = role === "supportAgent" || isLegacyManager;
 
+  // Ortak Buton Stili
+  const dropdownButtonStyle = {
+    padding: "10px 15px",
+    background: "none",
+    border: "none",
+    textAlign: "left",
+    cursor: "pointer",
+    fontSize: "14px",
+    width: "100%",
+    color: "#333",
+    transition: "background 0.2s"
+  };
+
   return (
     <Navbar
       bg="dark"
@@ -97,7 +110,6 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                 <Nav.Link as={Link} to="/admin/products" className="ms-3">
                   Manage Products
                 </Nav.Link>
-
                 <Nav.Link as={Link} to="/admin/comments" className="ms-3">
                   Comment Panel
                 </Nav.Link>
@@ -110,7 +122,6 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                 <Nav.Link as={Link} to="/admin/orders" className="ms-3">
                   Manage Orders
                 </Nav.Link>
-
                 <Nav.Link as={Link} to="/admin/returns" className="ms-3">
                   Manage Returns
                 </Nav.Link>
@@ -204,13 +215,13 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                       borderRadius: "8px",
                       boxShadow: "0 3px 12px rgba(0,0,0,0.15)",
                       padding: "10px 0",
-                      width: "160px",
+                      width: "180px",
                       display: "flex",
                       flexDirection: "column",
                       zIndex: 999,
                     }}
                   >
-                    {/* user header */}
+                    {/* User Info Header: İsim öncelikli gösterim */}
                     <div
                       style={{
                         padding: "10px 15px",
@@ -218,101 +229,36 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                         marginBottom: "6px",
                       }}
                     >
-                      <div style={{ fontWeight: 700, fontSize: "14px" }}>
-                        {(user && (user.name || user.fullName)) || "User"}
+                      <div style={{ fontWeight: 700, fontSize: "14px", color: "#000" }}>
+                        {user.name || user.fullName || "User"}
                       </div>
                       <div style={{ fontSize: "12px", color: "#666" }}>
-                        {(user && user.email) || ""}
+                        {user.email}
                       </div>
                     </div>
 
+                    {/* Sadeleştirilmiş Menü Seçenekleri */}
                     <button
                       onClick={() => navigate("/profile")}
-                      style={{
-                        padding: "10px 15px",
-                        background: "none",
-                        border: "none",
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
+                      style={dropdownButtonStyle}
                     >
                       Profile
                     </button>
 
                     <button
                       onClick={() => navigate("/orders")}
-                      style={{
-                        padding: "10px 15px",
-                        background: "none",
-                        border: "none",
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
+                      style={dropdownButtonStyle}
                     >
-                      Orders
-                    </button>
-
-                    <button
-                      onClick={() => navigate("/returns")}
-                      style={{
-                        padding: "10px 15px",
-                        background: "none",
-                        border: "none",
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Returns
-                    </button>
-
-                    <button
-                      onClick={() => navigate("/favorites")}
-                      style={{
-                        padding: "10px 15px",
-                        background: "none",
-                        border: "none",
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Favorites
-                    </button>
-
-                    <button
-                      onClick={() => navigate("/payment-methods")}
-                      style={{
-                        padding: "10px 15px",
-                        background: "none",
-                        border: "none",
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Payment Methods
-                    </button>
-
-                    <button
-                      onClick={() => navigate("/settings")}
-                      style={{
-                        padding: "10px 15px",
-                        background: "none",
-                        border: "none",
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Settings
+                      My Orders
                     </button>
 
                     <button
                       onClick={handleLogoutClick}
                       style={{
-                        padding: "10px 15px",
-                        background: "none",
-                        border: "none",
-                        textAlign: "left",
-                        cursor: "pointer",
+                        ...dropdownButtonStyle,
                         color: "red",
+                        borderTop: "1px solid #eee",
+                        marginTop: "5px"
                       }}
                     >
                       Log Out
