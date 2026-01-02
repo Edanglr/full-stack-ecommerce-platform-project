@@ -7,8 +7,8 @@ import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 import http from "http";
 import { Server } from "socket.io";
-import path from "path"; // 🟢 EKLENDİ
-import { fileURLToPath } from "url"; // 🟢 EKLENDİ
+import path from "path";
+import { fileURLToPath } from "url";
 
 // Route Importları
 import orderRoutes from "./src/routes/orderRoutes.js";
@@ -20,13 +20,15 @@ import favoriteRoutes from "./src/routes/favoriteRoutes.js";
 import returnRoutes from "./src/routes/returnRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
 import chatSocket from "./src/socket/chatSocket.js";
+
+// ✅ SALES MANAGER (discount + invoices range + analytics)
 import salesManagerRoutes from "./src/routes/salesManagerRoutes.js";
 
 // 📂 __dirname Tanımlaması (ES Modülleri için zorunlu)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express(); // ✅ ÖNCE app OLUŞTURULDU
+const app = express();
 const server = http.createServer(app);
 
 // 📂 STATİK DOSYA ERİŞİMİ
@@ -61,6 +63,8 @@ app.use("/api/users", userRoutes);
 app.use("/api/favorites", favoriteRoutes);
 app.use("/api/returns", returnRoutes);
 app.use("/api/chats", chatRoutes);
+
+// ✅ Sales Manager routes
 app.use("/api/sales", salesManagerRoutes);
 
 // 🔌 SOCKET.IO
