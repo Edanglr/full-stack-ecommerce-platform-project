@@ -12,6 +12,10 @@ import { sendInvoiceEmail } from "../utils/email.js";
 
 const router = express.Router();
 
+/**
+ * CREATE ORDER (customer)
+ * POST /api/orders
+ */
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { items, deliveryAddress } = req.body;
@@ -22,7 +26,7 @@ router.post("/", requireAuth, async (req, res) => {
         .json({ message: "No items provided in the order." });
     }
 
-    // 1) Stok kontrolü
+    // 1) Stock check
     for (const item of items) {
       const product = await Product.findById(item.productId);
 
@@ -49,7 +53,7 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    // 2) Stok düşme
+    // 2) Decrease stock
     for (const item of items) {
       const sizeKey = item.size;
       await Product.findByIdAndUpdate(item.productId, {
@@ -57,13 +61,13 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    // 3) Toplam tutar
+    // 3) Total amount
     const totalAmount = items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
 
-    // 4) Mock bankadan ödeme al
+    // 4) Payment
     const paymentResult = await mockBankCharge({
       amount: totalAmount,
       user: req.user,
@@ -76,13 +80,13 @@ router.post("/", requireAuth, async (req, res) => {
         .json({ message: "Payment failed. Please try again." });
     }
 
-    // 5) Takip kodu
+    // 5) Tracking code
     const trackingCode = generateTrackingCode();
 
-    // 6) Siparişi kaydet
+    // 6) Create order
     const newOrder = await Order.create({
       user: req.user.id,
-      items,
+      items, // MUST include productId, name, size, quantity, price, imageUrl
       totalAmount,
       trackingCode,
       shippingStatus: "Processing",
@@ -101,7 +105,7 @@ router.post("/", requireAuth, async (req, res) => {
       isCompleted: false,
     });
 
-    // Kullanıcı bilgileri (invoice + mail için)
+    // Invoice + email
     const user = await User.findById(req.user.id).lean();
 
     if (!user) {
@@ -111,7 +115,6 @@ router.post("/", requireAuth, async (req, res) => {
       );
     } else {
       try {
-        // 7) Invoice PDF üret
         const { invoiceNumber, pdfPath } = await generateInvoicePdf({
           order: newOrder,
           user,
@@ -121,7 +124,6 @@ router.post("/", requireAuth, async (req, res) => {
         newOrder.invoicePdfPath = pdfPath;
         await newOrder.save();
 
-        // 8) Invoice email gönder
         if (user.email) {
           try {
             await sendInvoiceEmail({ to: user.email, pdfPath });
@@ -146,7 +148,7 @@ router.post("/", requireAuth, async (req, res) => {
       user: req.user.id,
     });
 
-    // Shipping address bilgisi (frontend'e gidecek)
+    // Shipping address info (for invoice response)
     const name =
       (user &&
         (user.name ||
@@ -186,45 +188,77 @@ router.post("/", requireAuth, async (req, res) => {
 });
 
 /**
- * CUSTOMER ORDER HISTORY
+ * ✅ CUSTOMER ORDER HISTORY
  * GET /api/orders/my
+ *
+ * FIX: formatted response yüzünden trackingCode / shippingStatus / totalAmount
+ * ve items.* alanları kaybolmasın diye FULL order döndürüyoruz.
  */
 router.get("/my", requireAuth, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
-      .populate({
-        path: "items.productId",
-        select: "name imageUrl image price", // image ve imageUrl ikisini de çekiyoruz 🛡️
-      })
       .sort({ createdAt: -1 })
       .lean();
 
-    const formatted = orders.map((order) => ({
-      _id: order._id,
-      // Tracking code ve diğer alanların dolu gitmesini sağlıyoruz
-      orderCode: order._id.toString().slice(-6).toUpperCase(),
-      trackingCode: order.trackingCode || "N/A", 
-      status: order.shippingStatus || "Processing",
-      totalAmount: order.totalAmount, // "Total: TL" boşluğunu doldurur
-      createdAt: order.createdAt,
-      shippingHistory: order.shippingHistory || [],
-      items: order.items.map((i) => ({
-        name: i.productId?.name || "Product",
-        // Frontend'in beklediği 'imageUrl' alanını burada oluşturuyoruz
-        imageUrl: i.productId?.imageUrl || i.productId?.image || "https://via.placeholder.com/80?text=No+Image",
-        price: i.price,
-        quantity: i.quantity,
-        size: i.size || "-"
-      })),
-    }));
-
-    res.json(formatted);
+    return res.json(orders || []);
   } catch (err) {
     console.error("ORDER FETCH ERROR:", err);
-    res.status(500).json({ message: "Order fetch error." });
+    return res.status(500).json({ message: "Order fetch error" });
   }
 });
 
+/**
+ * 🔥 ADMIN / SUPPORT – CUSTOMER ORDERS
+ * GET /api/orders/by-user/:userId
+ * -> supportAgent + salesManager + productManager
+ * formatted + imageUrl garantisi
+ */
+router.get(
+  "/by-user/:userId",
+  requireRole("supportAgent", "salesManager", "productManager"),
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      const orders = await Order.find({ user: userId })
+        .populate({
+          path: "items.productId",
+          select: "name image imageUrl price",
+        })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const formatted = orders.map((order) => ({
+        _id: order._id,
+        orderCode: order._id.toString().slice(-6).toUpperCase(),
+        status: order.shippingStatus || "Processing",
+        totalPrice: order.totalAmount,
+        createdAt: order.createdAt,
+        items: (order.items || []).map((i) => ({
+          name: i.productId?.name || i.name || "Product",
+          imageUrl:
+            i.productId?.imageUrl ||
+            i.productId?.image ||
+            i.imageUrl ||
+            "https://via.placeholder.com/80?text=No+Image",
+          price: i.price,
+          quantity: i.quantity,
+          size: i.size || "-",
+        })),
+      }));
+
+      return res.json(formatted);
+    } catch (err) {
+      console.error("GET /orders/by-user error:", err);
+      return res.status(500).json({ message: "Cannot fetch customer orders." });
+    }
+  }
+);
+
+/**
+ * INVOICE DETAILS
+ * GET /api/orders/:id/invoice
+ */
 router.get("/:id/invoice", requireAuth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id).lean();
@@ -270,17 +304,20 @@ router.get("/:id/invoice", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("GET /api/orders/:id/invoice error:", err);
-    return res
-      .status(500)
-      .json({ message: "Error while fetching invoice details." });
+    return res.status(500).json({ message: "Invoice fetch error." });
   }
 });
 
-// ✅ sadece productManager (manager legacy zaten geçer)
+/**
+ * UPDATE SHIPPING STATUS
+ * PUT /api/orders/:id/status
+ * -> productManager (manager legacy geçer)
+ * allowed: v1 + v2 birleşti (Shipped eklendi)
+ */
 router.put("/:id/status", requireRole("productManager"), async (req, res) => {
   try {
     const { status } = req.body;
-    const allowed = ["Processing", "In-transit", "Delivered"];
+    const allowed = ["Processing", "In-transit", "Delivered", "Shipped"];
 
     if (!allowed.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
@@ -292,12 +329,10 @@ router.put("/:id/status", requireRole("productManager"), async (req, res) => {
     }
 
     order.shippingStatus = status;
-    order.shippingHistory.push({
-      status,
-      date: new Date(),
-    });
+    order.shippingHistory = order.shippingHistory || [];
+    order.shippingHistory.push({ status, date: new Date() });
 
-    // Delivered ise tamamlandı olarak işaretle
+    // Delivered ise tamamlandı
     order.isCompleted = status === "Delivered";
 
     await order.save();
@@ -314,6 +349,10 @@ router.put("/:id/status", requireRole("productManager"), async (req, res) => {
   }
 });
 
+/**
+ * TRACK ORDER BY TRACKING CODE
+ * GET /api/orders/track/:trackingCode
+ */
 router.get("/track/:trackingCode", async (req, res) => {
   try {
     const { trackingCode } = req.params;
@@ -344,102 +383,75 @@ router.get("/track/:trackingCode", async (req, res) => {
  * GET /api/orders/admin/deliveries
  * -> product manager / delivery department view
  */
-router.get("/admin/deliveries", requireRole("productManager"), async (_req, res) => {
-  try {
-    const orders = await Order.find({})
-      .populate("user", "name email")
-      .lean()
-      .sort({ createdAt: -1 });
+router.get(
+  "/admin/deliveries",
+  requireRole("productManager"),
+  async (_req, res) => {
+    try {
+      const orders = await Order.find({})
+        .populate("user", "name email")
+        .lean()
+        .sort({ createdAt: -1 });
 
-    const deliveryList = orders.flatMap((order) =>
-      order.items.map((item) => ({
-        deliveryId: order._id,
+      const deliveryList = orders.flatMap((order) =>
+        (order.items || []).map((item) => ({
+          deliveryId: order._id,
+          customerId: order.user?._id || null,
+          customerName: order.user?.name || order.user?.email || "Unknown",
+          productId: item.productId,
+          productName: item.name,
+          quantity: item.quantity,
+          totalPrice: item.price * item.quantity,
+          deliveryAddress: order.deliveryAddress || "Not specified",
+          shippingStatus: order.shippingStatus,
+          completed: !!order.isCompleted,
+          trackingCode: order.trackingCode,
+          createdAt: order.createdAt,
+        }))
+      );
+
+      return res.json(deliveryList);
+    } catch (err) {
+      console.error("GET /api/orders/admin/deliveries error:", err);
+      return res
+        .status(500)
+        .json({ message: "Error while fetching delivery list." });
+    }
+  }
+);
+
+/**
+ * GET /api/orders/admin/invoices
+ * -> salesManager + productManager (manager legacy geçer)
+ */
+router.get(
+  "/admin/invoices",
+  requireRole("salesManager", "productManager"),
+  async (_req, res) => {
+    try {
+      const orders = await Order.find({})
+        .populate("user", "name email")
+        .lean()
+        .sort({ createdAt: -1 });
+
+      const invoices = orders.map((order) => ({
+        invoiceId: order._id,
         customerId: order.user?._id || null,
         customerName: order.user?.name || order.user?.email || "Unknown",
-        productId: item.productId,
-        productName: item.name,
-        quantity: item.quantity,
-        totalPrice: item.price * item.quantity,
+        items: order.items,
+        totalAmount: order.totalAmount,
         deliveryAddress: order.deliveryAddress || "Not specified",
-        shippingStatus: order.shippingStatus,
-        completed: !!order.isCompleted,
         trackingCode: order.trackingCode,
+        shippingStatus: order.shippingStatus,
         createdAt: order.createdAt,
-      }))
-    );
-
-    return res.json(deliveryList);
-  } catch (err) {
-    console.error("GET /api/orders/admin/deliveries error:", err);
-    return res
-      .status(500)
-      .json({ message: "Error while fetching delivery list." });
-  }
-});
-
-// ✅ invoices: salesManager + productManager (manager legacy geçer)
-router.get("/admin/invoices", requireRole("salesManager", "productManager"), async (_req, res) => {
-  try {
-    const orders = await Order.find({})
-      .populate("user", "name email")
-      .lean()
-      .sort({ createdAt: -1 });
-
-    const invoices = orders.map((order) => ({
-      invoiceId: order._id,
-      customerId: order.user?._id || null,
-      customerName: order.user?.name || order.user?.email || "Unknown",
-      items: order.items,
-      totalAmount: order.totalAmount,
-      deliveryAddress: order.deliveryAddress || "Not specified",
-      trackingCode: order.trackingCode,
-      shippingStatus: order.shippingStatus,
-      createdAt: order.createdAt,
-    }));
-
-    return res.json(invoices);
-  } catch (err) {
-    console.error("GET /api/orders/admin/invoices error:", err);
-    return res
-      .status(500)
-      .json({ message: "Error while fetching invoices." });
-  }
-});
-
-// backend/src/routes/orderRoutes.js içinde ilgili rotayı bul ve değiştir:
-
-router.get("/by-user/:userId", requireRole("supportAgent", "salesManager", "productManager"),
-  async (req, res) => {
-    try {
-      const { userId } = req.params;
-
-      const orders = await Order.find({ user: userId })
-        .populate({
-          path: "items.productId",
-          select: "name image imageUrl price", // ✅ imageUrl'i seçtiğimizden emin oluyoruz
-        })
-        .sort({ createdAt: -1 })
-        .lean();
-
-      const formatted = orders.map((order) => ({
-        _id: order._id,
-        orderCode: order._id.toString().slice(-6).toUpperCase(),
-        status: order.shippingStatus,
-        totalPrice: order.totalAmount,
-        createdAt: order.createdAt,
-        items: order.items.map((i) => ({
-          name: i.productId?.name || i.name,
-          // ✅ Frontend'in beklediği imageUrl alanını burada dolduruyoruz
-          imageUrl: i.productId?.imageUrl || i.productId?.image || i.imageUrl || "", 
-          price: i.price,
-          quantity: i.quantity,
-        })),
       }));
 
-      res.json(formatted);
+      return res.json(invoices);
     } catch (err) {
-      console.error("GET /orders/by-user error:", err);
-      res.status(500).json({ message: "Cannot fetch customer orders." });
+      console.error("GET /api/orders/admin/invoices error:", err);
+      return res
+        .status(500)
+        .json({ message: "Error while fetching invoices." });
     }
   }
 );
