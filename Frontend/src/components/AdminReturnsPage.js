@@ -43,10 +43,11 @@ function badgeStyle(status) {
   const s = String(status || "").toLowerCase();
   if (s === "requested") return { background: "#fff3cd", color: "#856404" };
   if (s === "approved") return { background: "#d4edda", color: "#155724" };
-  if (s === "received") return { background: "#e2e3ff", color: "#2c2f7a" };
-  if (s === "refunded") return { background: "#d1ecf1", color: "#0c5460" };
+  if (s === "received") return { background: "#d1ecf1", color: "#0c5460" };
+  if (s === "refunded") return { background: "#e2e3ff", color: "#2f2f77" };
   if (s === "rejected") return { background: "#f8d7da", color: "#721c24" };
-  if (s === "completed") return { background: "#e6f4ea", color: "#137333" };
+  if (s === "completed") return { background: "#e6f4ea", color: "#1e7e34" };
+  if (s === "cancelled") return { background: "#eee", color: "#111" };
   return { background: "#eee", color: "#111" };
 }
 
@@ -100,6 +101,7 @@ export default function AdminReturnsPage() {
         r?.reason,
         r?.size,
         String(r?.quantity ?? ""),
+        String(r?.status ?? ""),
       ]
         .filter(Boolean)
         .join(" ")
@@ -109,20 +111,30 @@ export default function AdminReturnsPage() {
     });
   }, [returns, statusFilter, search]);
 
+  const refreshAndSyncModal = async (returnIdToSync) => {
+    await loadReturns();
+    if (!returnIdToSync) return;
+    const found = (returns || []).find((x) => String(x._id) === String(returnIdToSync));
+    if (found) setActive(found);
+  };
+
   const approveRefund = async (returnId) => {
     try {
       setErr("");
       setMsg("");
-      const ok = window.confirm("Approve this refund? (This will email the customer.)");
+      const ok = window.confirm("Approve this return? This calculates refund amount and emails the customer.");
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/approve`, {
-        method: "PATCH",
-      });
+      const data = await apiFetch(`/api/returns/${returnId}/approve`, { method: "PATCH" });
 
-      setMsg(data?.message || "Refund approved.");
+      setMsg(data?.message || "Approved.");
       await loadReturns();
+      if (open && active && String(active._id) === String(returnId)) {
+        const fresh = await apiFetch("/api/returns");
+        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
+        if (found) setActive(found);
+      }
     } catch (e) {
       setErr(e.message || "Approve failed");
     } finally {
@@ -144,8 +156,13 @@ export default function AdminReturnsPage() {
         body: JSON.stringify({ reason: rejectReason || "" }),
       });
 
-      setMsg(data?.message || "Return rejected.");
+      setMsg(data?.message || "Rejected.");
       await loadReturns();
+      if (open && active && String(active._id) === String(returnId)) {
+        const fresh = await apiFetch("/api/returns");
+        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
+        if (found) setActive(found);
+      }
     } catch (e) {
       setErr(e.message || "Reject failed");
     } finally {
@@ -157,18 +174,21 @@ export default function AdminReturnsPage() {
     try {
       setErr("");
       setMsg("");
-      const ok = window.confirm("Mark this return as received?");
+      const ok = window.confirm("Mark as received? This means the item arrived to warehouse.");
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/received`, {
-        method: "PATCH",
-      });
+      const data = await apiFetch(`/api/returns/${returnId}/received`, { method: "PATCH" });
 
       setMsg(data?.message || "Marked as received.");
       await loadReturns();
+      if (open && active && String(active._id) === String(returnId)) {
+        const fresh = await apiFetch("/api/returns");
+        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
+        if (found) setActive(found);
+      }
     } catch (e) {
-      setErr(e.message || "Receive failed");
+      setErr(e.message || "Received update failed");
     } finally {
       setLoading(false);
     }
@@ -178,18 +198,21 @@ export default function AdminReturnsPage() {
     try {
       setErr("");
       setMsg("");
-      const ok = window.confirm("Mark this return as refunded?");
+      const ok = window.confirm("Mark as refunded? This means money transfer is done.");
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/refund`, {
-        method: "PATCH",
-      });
+      const data = await apiFetch(`/api/returns/${returnId}/refund`, { method: "PATCH" });
 
       setMsg(data?.message || "Marked as refunded.");
       await loadReturns();
+      if (open && active && String(active._id) === String(returnId)) {
+        const fresh = await apiFetch("/api/returns");
+        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
+        if (found) setActive(found);
+      }
     } catch (e) {
-      setErr(e.message || "Refund failed");
+      setErr(e.message || "Refund update failed");
     } finally {
       setLoading(false);
     }
@@ -199,16 +222,19 @@ export default function AdminReturnsPage() {
     try {
       setErr("");
       setMsg("");
-      const ok = window.confirm("Complete this return process?");
+      const ok = window.confirm("Complete the return flow?");
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/complete`, {
-        method: "PATCH",
-      });
+      const data = await apiFetch(`/api/returns/${returnId}/complete`, { method: "PATCH" });
 
-      setMsg(data?.message || "Marked as completed.");
+      setMsg(data?.message || "Completed.");
       await loadReturns();
+      if (open && active && String(active._id) === String(returnId)) {
+        const fresh = await apiFetch("/api/returns");
+        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
+        if (found) setActive(found);
+      }
     } catch (e) {
       setErr(e.message || "Complete failed");
     } finally {
@@ -274,6 +300,7 @@ export default function AdminReturnsPage() {
             <option value="Refunded">Refunded</option>
             <option value="Rejected">Rejected</option>
             <option value="Completed">Completed</option>
+            <option value="Cancelled">Cancelled</option>
           </select>
         </div>
 
@@ -293,7 +320,7 @@ export default function AdminReturnsPage() {
       </div>
 
       <div style={{ marginTop: 12, background: "white", border: "1px solid #eee", borderRadius: 10, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {["Created", "Return ID", "Customer", "Order", "Product", "Size", "Qty", "Status", "Refund(TL)", "Actions"].map(
@@ -316,11 +343,12 @@ export default function AdminReturnsPage() {
 
           <tbody>
             {filtered.map((r) => {
-              const canApprove = String(r.status) === "Requested";
-              const canReject = String(r.status) === "Requested";
-              const canReceive = String(r.status) === "Approved";
-              const canRefund = String(r.status) === "Received";
-              const canComplete = String(r.status) === "Refunded";
+              const st = String(r.status || "");
+              const canApprove = st === "Requested";
+              const canReject = st === "Requested";
+              const canReceived = st === "Approved";
+              const canRefund = st === "Received";
+              const canComplete = st === "Refunded";
 
               return (
                 <tr key={r._id} style={{ borderBottom: "1px solid #f2f2f2" }}>
@@ -415,15 +443,15 @@ export default function AdminReturnsPage() {
                       </button>
 
                       <button
-                        disabled={!canReceive || loading}
+                        disabled={!canReceived || loading}
                         onClick={() => markReceived(r._id)}
                         style={{
                           padding: "6px 10px",
                           borderRadius: 8,
                           border: "1px solid #ccc",
-                          background: "white",
-                          color: canReceive ? "#111" : "#999",
-                          cursor: canReceive && !loading ? "pointer" : "not-allowed",
+                          background: canReceived ? "white" : "#eee",
+                          color: canReceived ? "#111" : "#999",
+                          cursor: canReceived && !loading ? "pointer" : "not-allowed",
                           fontWeight: 700,
                         }}
                       >
@@ -437,13 +465,13 @@ export default function AdminReturnsPage() {
                           padding: "6px 10px",
                           borderRadius: 8,
                           border: "1px solid #ccc",
-                          background: "white",
+                          background: canRefund ? "white" : "#eee",
                           color: canRefund ? "#111" : "#999",
                           cursor: canRefund && !loading ? "pointer" : "not-allowed",
                           fontWeight: 700,
                         }}
                       >
-                        Refund
+                        Refunded
                       </button>
 
                       <button
@@ -453,7 +481,7 @@ export default function AdminReturnsPage() {
                           padding: "6px 10px",
                           borderRadius: 8,
                           border: "1px solid #ccc",
-                          background: "white",
+                          background: canComplete ? "white" : "#eee",
                           color: canComplete ? "#111" : "#999",
                           cursor: canComplete && !loading ? "pointer" : "not-allowed",
                           fontWeight: 700,
@@ -548,7 +576,7 @@ export default function AdminReturnsPage() {
                   cursor: String(active.status) === "Requested" && !loading ? "pointer" : "not-allowed",
                 }}
               >
-                Approve Refund
+                Approve
               </button>
 
               <button
@@ -578,7 +606,7 @@ export default function AdminReturnsPage() {
                   cursor: String(active.status) === "Approved" && !loading ? "pointer" : "not-allowed",
                 }}
               >
-                Mark Received
+                Received
               </button>
 
               <button
@@ -593,7 +621,7 @@ export default function AdminReturnsPage() {
                   cursor: String(active.status) === "Received" && !loading ? "pointer" : "not-allowed",
                 }}
               >
-                Mark Refunded
+                Refunded
               </button>
 
               <button
@@ -608,8 +636,31 @@ export default function AdminReturnsPage() {
                   cursor: String(active.status) === "Refunded" && !loading ? "pointer" : "not-allowed",
                 }}
               >
-                Mark Completed
+                Complete
               </button>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Status History</div>
+              <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
+                {(active.statusHistory || []).length === 0 ? (
+                  <div style={{ opacity: 0.75 }}>No history</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {(active.statusHistory || [])
+                      .slice()
+                      .reverse()
+                      .map((h, idx) => (
+                        <div key={idx} style={{ fontSize: 13 }}>
+                          <div style={{ fontWeight: 800 }}>
+                            {h.status} <span style={{ fontWeight: 500, opacity: 0.75 }}>{formatDateTime(h.at)}</span>
+                          </div>
+                          {h.note ? <div style={{ opacity: 0.85 }}>{h.note}</div> : null}
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
