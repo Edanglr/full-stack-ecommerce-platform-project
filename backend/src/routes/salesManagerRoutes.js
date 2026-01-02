@@ -1,15 +1,13 @@
-// backend/src/routes/salesManagerRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import Favorite from "../models/Favorite.js";
 import User from "../models/User.js";
+import DiscountCampaign from "../models/DiscountCampaign.js";
 import { requireSalesManager } from "../middleware/auth.js";
 import { sendDiscountEmail } from "../utils/email.js";
 
 const router = express.Router();
-
-// ========== HELPER FUNCTIONS ==========
 
 function parseDateRange(from, to) {
   let fromDate = null;
@@ -42,10 +40,34 @@ function buildCreatedAtFilter(from, to) {
   return Object.keys(filter).length ? { createdAt: filter } : {};
 }
 
-// ========== 1) INVOICES ==========
-/**
- * GET /api/sales/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
- */
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+async function notifyWishlistUsers(productIds, products, discountRate) {
+  const favs = await Favorite.find({ product: { $in: productIds } })
+    .select("user product")
+    .lean();
+
+  const userIds = [...new Set(favs.map((f) => String(f.user)))];
+  const users = await User.find({ _id: { $in: userIds } })
+    .select("email name")
+    .lean();
+
+  let notifiedCount = 0;
+
+  for (const u of users) {
+    if (!u.email) continue;
+    try {
+      await sendDiscountEmail(u.email, u.name || "Customer", products, discountRate);
+      notifiedCount++;
+    } catch (emailErr) {
+      console.error(`Failed to send discount email to ${u.email}:`, emailErr);
+    }
+  }
+
+  return notifiedCount;
+}
+
+// 1) INVOICES
 router.get("/invoices", requireSalesManager, async (req, res) => {
   try {
     const { from, to } = req.query || {};
@@ -62,25 +84,145 @@ router.get("/invoices", requireSalesManager, async (req, res) => {
   }
 });
 
-// ========== 2) DISCOUNT (Selected Products) ==========
-/**
- * POST /api/sales/discount
- * Body: { productIds: [id...], discountRate: 0.2 }  // 0.20 = %20
- * ✅ TASK 2: Wishlist notification
- */
-router.post("/discount", requireSalesManager, async (req, res) => {
+// 2) DISCOUNT CAMPAIGNS
+router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
   try {
-    const { productIds, discountRate } = req.body || {};
-    
+    const { name, productIds, discountRate, startDate, endDate } = req.body || {};
+
+    if (!name || typeof name !== "string") {
+      return res.status(400).json({ message: "name is required" });
+    }
+
     if (!Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ message: "productIds array required" });
     }
 
     const r = Number(discountRate);
     if (!(r > 0 && r < 1)) {
-      return res
-        .status(400)
-        .json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
+      return res.status(400).json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
+    }
+
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) {
+      return res.status(400).json({ message: "startDate and endDate must be valid dates" });
+    }
+    if (e < s) {
+      return res.status(400).json({ message: "endDate must be after startDate" });
+    }
+
+    const products = await Product.find({ _id: { $in: productIds } });
+    if (!products || products.length === 0) {
+      return res.status(404).json({ message: "No products found" });
+    }
+
+    const campaign = await DiscountCampaign.create({
+      name: name.trim(),
+      discountRate: r,
+      affectedProducts: productIds,
+      startDate: s,
+      endDate: e,
+      createdBy: req.user?.id || null,
+      isActive: true,
+    });
+
+    const now = new Date();
+    const shouldApplyNow = now >= s && now <= e;
+
+    let updatedCount = 0;
+
+    if (shouldApplyNow) {
+      for (const p of products) {
+        const currentPrice = Number(p.price);
+
+        if (p.basePrice == null) p.basePrice = currentPrice;
+        if (p.originalPrice == null) p.originalPrice = Number(p.basePrice);
+
+        const base = Number(p.basePrice ?? p.originalPrice ?? p.price);
+
+        p.basePrice = base;
+        p.originalPrice = base;
+        p.discountRate = r;
+        p.price = round2(base * (1 - r));
+
+        await p.save();
+        updatedCount++;
+      }
+    }
+
+    const notifiedUsers = shouldApplyNow
+      ? await notifyWishlistUsers(productIds, products, r)
+      : 0;
+
+    return res.json({
+      message: shouldApplyNow
+        ? "Campaign created and applied"
+        : "Campaign created (not active yet)",
+      campaign,
+      updatedCount,
+      notifiedUsers,
+    });
+  } catch (e) {
+    console.error("CREATE CAMPAIGN ERROR:", e);
+    return res.status(500).json({ message: "Campaign creation failed" });
+  }
+});
+
+router.get("/discount-campaigns", requireSalesManager, async (_req, res) => {
+  try {
+    const campaigns = await DiscountCampaign.find({})
+      .sort({ createdAt: -1 })
+      .populate("affectedProducts", "name price basePrice discountRate");
+    return res.json(campaigns);
+  } catch (e) {
+    console.error("LIST CAMPAIGNS ERROR:", e);
+    return res.status(500).json({ message: "Campaign list failed" });
+  }
+});
+
+router.get("/discount-campaigns/active", async (_req, res) => {
+  try {
+    const now = new Date();
+    const campaigns = await DiscountCampaign.find({
+      isActive: true,
+      startDate: { $lte: now },
+      endDate: { $gte: now },
+    }).populate("affectedProducts", "name price basePrice discountRate");
+    return res.json(campaigns);
+  } catch (e) {
+    console.error("ACTIVE CAMPAIGNS ERROR:", e);
+    return res.status(500).json({ message: "Active campaigns fetch failed" });
+  }
+});
+
+router.patch("/discount-campaigns/:id/deactivate", requireSalesManager, async (req, res) => {
+  try {
+    const c = await DiscountCampaign.findById(req.params.id);
+    if (!c) return res.status(404).json({ message: "Campaign not found" });
+
+    c.isActive = false;
+    await c.save();
+
+    return res.json({ message: "Campaign deactivated", campaign: c });
+  } catch (e) {
+    console.error("DEACTIVATE CAMPAIGN ERROR:", e);
+    return res.status(500).json({ message: "Deactivation failed" });
+  }
+});
+
+// 3) DISCOUNT (Selected Products) legacy endpoint
+router.post("/discount", requireSalesManager, async (req, res) => {
+  try {
+    const { productIds, discountRate } = req.body || {};
+
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ message: "productIds array required" });
+    }
+
+    const r = Number(discountRate);
+    if (!(r > 0 && r < 1)) {
+      return res.status(400).json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
     }
 
     const products = await Product.find({ _id: { $in: productIds } });
@@ -88,56 +230,31 @@ router.post("/discount", requireSalesManager, async (req, res) => {
       return res.status(404).json({ message: "No products found" });
     }
 
-    // ✅ Price update - basePrice yerine originalPrice kullan (consistency)
     let updatedCount = 0;
 
     for (const p of products) {
       const currentPrice = Number(p.price);
-      
-      // originalPrice yoksa mevcut fiyatı kaydet
-      if (p.basePrice == null && p.originalPrice == null) {
-        p.basePrice = currentPrice;
-        p.originalPrice = currentPrice;
-      }
-      
+
+      if (p.basePrice == null) p.basePrice = currentPrice;
+      if (p.originalPrice == null) p.originalPrice = Number(p.basePrice);
+
       const base = Number(p.basePrice ?? p.originalPrice ?? p.price);
-      
+
       p.basePrice = base;
       p.originalPrice = base;
       p.discountRate = r;
-      p.price = Math.round(base * (1 - r) * 100) / 100;
-      
+      p.price = round2(base * (1 - r));
+
       await p.save();
       updatedCount++;
     }
 
-    // ✅ TASK 2: Wishlist notify
-    const favs = await Favorite.find({ product: { $in: productIds } })
-      .select("user product")
-      .lean();
-
-    const userIds = [...new Set(favs.map((f) => String(f.user)))];
-    const users = await User.find({ _id: { $in: userIds } })
-      .select("email name")
-      .lean();
-
-    let notifiedCount = 0;
-
-    for (const u of users) {
-      if (u.email) {
-        try {
-          await sendDiscountEmail(u.email, u.name || "Customer", products, r);
-          notifiedCount++;
-        } catch (emailErr) {
-          console.error(`Failed to send discount email to ${u.email}:`, emailErr);
-        }
-      }
-    }
+    const notifiedUsers = await notifyWishlistUsers(productIds, products, r);
 
     return res.json({
       message: "Discount applied and wishlist users notified",
-      updatedCount: updatedCount,
-      notifiedUsers: notifiedCount,
+      updatedCount,
+      notifiedUsers,
     });
   } catch (e) {
     console.error("DISCOUNT ERROR:", e);
@@ -145,11 +262,7 @@ router.post("/discount", requireSalesManager, async (req, res) => {
   }
 });
 
-// ========== 3) DISCOUNT (All Products) ==========
-/**
- * POST /api/sales/discount/all
- * Body: { rate: 20 }  // 20 = %20
- */
+// 4) DISCOUNT (All Products) legacy endpoint
 router.post("/discount/all", requireSalesManager, async (req, res) => {
   try {
     const rate = Number(req.body.rate || 0);
@@ -168,59 +281,28 @@ router.post("/discount/all", requireSalesManager, async (req, res) => {
 
     for (const p of products) {
       const currentPrice = Number(p.price);
-      
-      if (p.basePrice == null && p.originalPrice == null) {
-        p.basePrice = currentPrice;
-        p.originalPrice = currentPrice;
-      }
-      
+
+      if (p.basePrice == null) p.basePrice = currentPrice;
+      if (p.originalPrice == null) p.originalPrice = Number(p.basePrice);
+
       const base = Number(p.basePrice ?? p.originalPrice ?? p.price);
 
       p.basePrice = base;
       p.originalPrice = base;
       p.discountRate = discountRate;
-      p.price = Math.round(base * (1 - discountRate) * 100) / 100;
+      p.price = round2(base * (1 - discountRate));
 
       await p.save();
       updatedCount++;
     }
 
-    // Wishlist notify for all products
     const productIds = products.map((p) => String(p._id));
-    const favs = await Favorite.find({ product: { $in: productIds } })
-      .select("user product")
-      .lean();
-
-    const userIds = [...new Set(favs.map((f) => String(f.user)))];
-    const users = await User.find({ _id: { $in: userIds } })
-      .select("name email")
-      .lean();
-
-    const productMap = new Map(products.map((pp) => [String(pp._id), pp]));
-    let notifiedCount = 0;
-
-    for (const u of users) {
-      if (!u.email) continue;
-
-      const userFavs = favs.filter((f) => String(f.user) === String(u._id));
-      const wishlistProducts = userFavs
-        .map((f) => productMap.get(String(f.product)))
-        .filter(Boolean);
-
-      if (wishlistProducts.length > 0) {
-        try {
-          await sendDiscountEmail(u.email, u.name || "Customer", wishlistProducts, discountRate);
-          notifiedCount++;
-        } catch (emailErr) {
-          console.error(`Failed to send email to ${u.email}:`, emailErr);
-        }
-      }
-    }
+    const notifiedUsers = await notifyWishlistUsers(productIds, products, discountRate);
 
     return res.json({
       message: `Discount applied (%${rate}). Prices updated and emails sent.`,
       updatedCount,
-      notifiedUsers: notifiedCount,
+      notifiedUsers,
     });
   } catch (err) {
     console.error("DISCOUNT ALL ERROR:", err);
@@ -228,11 +310,7 @@ router.post("/discount/all", requireSalesManager, async (req, res) => {
   }
 });
 
-// ========== 4) PRICES (Manual) ==========
-/**
- * PUT /api/sales/prices
- * Body: { updates: [{ productId, newPrice }] }
- */
+// 5) PRICES (Manual)
 router.put("/prices", requireSalesManager, async (req, res) => {
   try {
     const { updates } = req.body || {};
@@ -251,10 +329,9 @@ router.put("/prices", requireSalesManager, async (req, res) => {
       const p = await Product.findById(productId);
       if (!p) continue;
 
-      // Manuel fiyat değişikliği - indirimi sıfırla
-      p.price = Math.round(newPrice * 100) / 100;
-      p.basePrice = Math.round(newPrice * 100) / 100;
-      p.originalPrice = Math.round(newPrice * 100) / 100;
+      p.price = round2(newPrice);
+      p.basePrice = round2(newPrice);
+      p.originalPrice = round2(newPrice);
       p.discountRate = 0;
 
       await p.save();
@@ -268,11 +345,7 @@ router.put("/prices", requireSalesManager, async (req, res) => {
   }
 });
 
-// ========== 5) ANALYTICS ==========
-/**
- * GET /api/sales/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD
- * Revenue, cost, profit + daily series
- */
+// 6) ANALYTICS
 router.get("/analytics", requireSalesManager, async (req, res) => {
   try {
     const { from, to } = req.query || {};
@@ -289,21 +362,20 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
 
     for (const o of orders) {
       const dayKey = new Date(o.createdAt).toISOString().slice(0, 10);
-      
+
       if (!byDay.has(dayKey)) {
         byDay.set(dayKey, { revenue: 0, cost: 0 });
       }
 
       for (const it of o.items || []) {
-        const salePrice = Number(it.price ?? 0);
+        const salePrice = Number(it.unitPriceAtPurchase ?? it.price ?? 0);
         const qty = Number(it.quantity ?? 1);
 
         const lineRevenue = salePrice * qty;
 
-        // Cost: item.cost > productId.cost > 50% of sale price
         let unitCost = 0;
-        if (it.cost != null && !Number.isNaN(Number(it.cost))) {
-          unitCost = Number(it.cost);
+        if (it.unitCostAtPurchase != null && !Number.isNaN(Number(it.unitCostAtPurchase))) {
+          unitCost = Number(it.unitCostAtPurchase);
         } else if (it.productId?.cost != null && !Number.isNaN(Number(it.productId.cost))) {
           unitCost = Number(it.productId.cost);
         } else {
@@ -324,17 +396,17 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, v]) => ({
         date,
-        revenue: Math.round(v.revenue * 100) / 100,
-        cost: Math.round(v.cost * 100) / 100,
-        profit: Math.round((v.revenue - v.cost) * 100) / 100,
+        revenue: round2(v.revenue),
+        cost: round2(v.cost),
+        profit: round2(v.revenue - v.cost),
       }));
 
     return res.json({
       from: from || "1970-01-01",
       to: to || new Date().toISOString().slice(0, 10),
-      revenue: Math.round(revenue * 100) / 100,
-      cost: Math.round(cost * 100) / 100,
-      profit: Math.round((revenue - cost) * 100) / 100,
+      revenue: round2(revenue),
+      cost: round2(cost),
+      profit: round2(revenue - cost),
       series,
     });
   } catch (e) {
