@@ -1,9 +1,33 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useChatSocket } from "../../hooks/useChatSocket";
 
+// basit id üretici (ekstra lib gerektirmez)
+function makeGuestId() {
+  return (
+    "guest-" +
+    Math.random().toString(16).slice(2) +
+    Date.now().toString(16)
+  );
+}
+
 function CustomerChat({ user }) {
-  const isReady = !!user;
-  const chatId = isReady ? `chat-${user._id || user.id}` : null;
+  // ✅ Guest id: bir kez üret, kalıcı sakla
+  const guestId = useMemo(() => {
+    const key = "guestChatId";
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = makeGuestId();
+      localStorage.setItem(key, id);
+    }
+    return id;
+  }, []);
+
+  const isLoggedIn = !!user;
+  const senderId = isLoggedIn ? (user._id || user.id) : guestId;
+  const senderName = isLoggedIn ? (user.name || "Customer") : "Guest";
+
+  // ✅ Guest dahil herkes için chatId var
+  const chatId = `chat-${senderId}`;
 
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
@@ -12,7 +36,7 @@ function CustomerChat({ user }) {
   // Pencere durumunu yerel depolamada sakla
   const [open, setOpen] = useState(() => {
     const savedState = localStorage.getItem("chatWindowOpen");
-    return savedState === "true"; 
+    return savedState === "true";
   });
 
   useEffect(() => {
@@ -28,7 +52,7 @@ function CustomerChat({ user }) {
         const res = await fetch(`http://localhost:5050/api/chats/${chatId}`);
         const data = await res.json();
         const msgList = data.messages || (Array.isArray(data) ? data : []);
-        
+
         // Sohbet kapalıysa geçmişi gösterme
         if (data.status === "closed") {
           setMessages([]);
@@ -52,12 +76,12 @@ function CustomerChat({ user }) {
   });
 
   const handleSend = () => {
-    if (!text.trim() || !isReady) return;
+    if (!text.trim()) return; // ✅ login şartı kalktı
     sendMessage({
       chatId,
-      senderId: user._id || user.id,
+      senderId,
       senderRole: "customer",
-      senderName: user.name || "Customer",
+      senderName,
       text,
     });
     setText("");
@@ -82,31 +106,36 @@ function CustomerChat({ user }) {
 
       sendMessage({
         chatId,
-        senderId: user._id || user.id,
+        senderId,
         senderRole: "customer",
-        senderName: user.name || "Customer",
+        senderName,
         text: `Sent a file: ${data.fileName}`,
-        fileUrl: data.fileUrl, 
+        fileUrl: data.fileUrl,
       });
     } catch (err) {
       console.error("Upload error:", err);
       alert("Failed to upload file.");
     } finally {
       setIsUploading(false);
+      // aynı dosyayı tekrar seçebilmek için:
+      e.target.value = "";
     }
   };
-  
+
   const handleEndChat = async () => {
     if (!window.confirm("End chat and clear history?")) return;
     try {
-      const response = await fetch(`http://localhost:5050/api/chats/${chatId}/close`, {
-        method: "PUT", 
-        headers: { "Content-Type": "application/json" }
-      });
+      const response = await fetch(
+        `http://localhost:5050/api/chats/${chatId}/close`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
       if (response.ok) {
-        setMessages([]); 
-        setOpen(false);  
-        localStorage.removeItem("chatWindowOpen"); 
+        setMessages([]);
+        setOpen(false);
+        localStorage.removeItem("chatWindowOpen");
       }
     } catch (err) {
       console.error("EndChat error:", err);
@@ -118,32 +147,51 @@ function CustomerChat({ user }) {
       {open && (
         <div style={styles.chatWindow}>
           <div style={styles.header}>
-            <span>Live Support</span>
+            <span>Live Support {!isLoggedIn ? "(Guest)" : ""}</span>
             <div style={{ display: "flex", gap: "10px" }}>
-              <button onClick={handleEndChat} style={styles.endChatBtn}>End</button>
-              <button onClick={() => setOpen(false)} style={styles.closeBtn}>✕</button>
+              <button onClick={handleEndChat} style={styles.endChatBtn}>
+                End
+              </button>
+              <button onClick={() => setOpen(false)} style={styles.closeBtn}>
+                ✕
+              </button>
             </div>
           </div>
 
           <div style={styles.messages}>
             {messages.map((m, i) => {
-              const isImage = m.fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(m.fileUrl);
+              const isImage =
+                m.fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(m.fileUrl);
               return (
-                <div key={i} style={{
-                  ...styles.message,
-                  alignSelf: m.senderRole === "customer" ? "flex-end" : "flex-start",
-                  backgroundColor: m.senderRole === "customer" ? "#dcf8c6" : "#f1f1f1"
-                }}>
+                <div
+                  key={i}
+                  style={{
+                    ...styles.message,
+                    alignSelf:
+                      m.senderRole === "customer" ? "flex-end" : "flex-start",
+                    backgroundColor:
+                      m.senderRole === "customer" ? "#dcf8c6" : "#f1f1f1",
+                  }}
+                >
                   <b style={{ fontSize: 11 }}>{m.senderName}</b>
                   <div>{m.text}</div>
                   {m.fileUrl && (
                     <div style={{ marginTop: "8px" }}>
                       {isImage ? (
                         <a href={m.fileUrl} target="_blank" rel="noreferrer">
-                          <img src={m.fileUrl} alt="attachment" style={styles.imagePreview} />
+                          <img
+                            src={m.fileUrl}
+                            alt="attachment"
+                            style={styles.imagePreview}
+                          />
                         </a>
                       ) : (
-                        <a href={m.fileUrl} target="_blank" rel="noreferrer" style={styles.attachmentLink}>
+                        <a
+                          href={m.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={styles.attachmentLink}
+                        >
                           📁 View Attachment
                         </a>
                       )}
@@ -155,41 +203,157 @@ function CustomerChat({ user }) {
           </div>
 
           <div style={styles.inputRow}>
-            <label htmlFor="file-input" style={styles.fileLabel}>📎</label>
-            <input id="file-input" type="file" style={{ display: "none" }} onChange={handleFileChange} disabled={isUploading || !isReady} />
+            <label htmlFor="file-input" style={styles.fileLabel}>
+              📎
+            </label>
+            <input
+              id="file-input"
+              type="file"
+              style={{ display: "none" }}
+              onChange={handleFileChange}
+              disabled={isUploading}
+            />
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={isReady ? "Type a message..." : "Login to chat"}
+              placeholder={"Type a message..."}
               style={styles.input}
-              disabled={!isReady || isUploading}
+              disabled={isUploading}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
             />
-            <button onClick={handleSend} disabled={!isReady || isUploading} style={styles.sendBtn}>
+            <button
+              onClick={handleSend}
+              disabled={isUploading}
+              style={styles.sendBtn}
+            >
               {isUploading ? "..." : "Send"}
             </button>
           </div>
         </div>
       )}
-      {!open && <button onClick={() => setOpen(true)} style={styles.floatingButton}>💬</button>}
+      {!open && (
+        <button onClick={() => setOpen(true)} style={styles.floatingButton}>
+          💬
+        </button>
+      )}
     </>
   );
 }
 
 const styles = {
-  floatingButton: { position: "fixed", bottom: 20, right: 20, width: 60, height: 60, borderRadius: "50%", background: "#000", color: "#fff", fontSize: 26, border: "none", cursor: "pointer", zIndex: 9999 },
-  chatWindow: { position: "fixed", bottom: 90, right: 20, width: 320, height: 420, background: "#fff", borderRadius: 12, boxShadow: "0 6px 18px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column", zIndex: 9999, overflow: "hidden" },
-  header: { padding: "10px 15px", background: "#000", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" },
-  closeBtn: { background: "none", border: "none", color: "#fff", fontSize: 18, cursor: "pointer" },
-  endChatBtn: { background: "#ff4d4d", border: "none", color: "#fff", fontSize: 11, padding: "4px 8px", borderRadius: "4px", cursor: "pointer" },
-  messages: { flex: 1, padding: 10, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, backgroundColor: "#fff" },
-  message: { padding: "8px 12px", borderRadius: 10, maxWidth: "80%", wordWrap: "break-word", fontSize: "14px" },
-  inputRow: { display: "flex", gap: 6, padding: 10, borderTop: "1px solid #ddd", background: "#f9f9f9", alignItems: "center" },
-  input: { flex: 1, padding: "8px", borderRadius: "20px", border: "1px solid #ccc", outline: "none" },
-  sendBtn: { padding: "0 15px", borderRadius: "20px", border: "none", background: "#000", color: "#fff", cursor: "pointer", height: "35px" },
-  fileLabel: { cursor: "pointer", fontSize: "20px", color: "#666", padding: "0 5px" },
-  attachmentLink: { color: "#007bff", fontSize: "12px", display: "block", marginTop: "4px", fontWeight: "bold" },
-  imagePreview: { maxWidth: "100%", maxHeight: "150px", borderRadius: "8px", border: "1px solid #ddd", display: "block", margin: "5px auto" }
+  floatingButton: {
+    position: "fixed",
+    bottom: 20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: "50%",
+    background: "#000",
+    color: "#fff",
+    fontSize: 26,
+    border: "none",
+    cursor: "pointer",
+    zIndex: 9999,
+  },
+  chatWindow: {
+    position: "fixed",
+    bottom: 90,
+    right: 20,
+    width: 320,
+    height: 420,
+    background: "#fff",
+    borderRadius: 12,
+    boxShadow: "0 6px 18px rgba(0,0,0,0.25)",
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 9999,
+    overflow: "hidden",
+  },
+  header: {
+    padding: "10px 15px",
+    background: "#000",
+    color: "#fff",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  closeBtn: {
+    background: "none",
+    border: "none",
+    color: "#fff",
+    fontSize: 18,
+    cursor: "pointer",
+  },
+  endChatBtn: {
+    background: "#ff4d4d",
+    border: "none",
+    color: "#fff",
+    fontSize: 11,
+    padding: "4px 8px",
+    borderRadius: "4px",
+    cursor: "pointer",
+  },
+  messages: {
+    flex: 1,
+    padding: 10,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    backgroundColor: "#fff",
+  },
+  message: {
+    padding: "8px 12px",
+    borderRadius: 10,
+    maxWidth: "80%",
+    wordWrap: "break-word",
+    fontSize: "14px",
+  },
+  inputRow: {
+    display: "flex",
+    gap: 6,
+    padding: 10,
+    borderTop: "1px solid #ddd",
+    background: "#f9f9f9",
+    alignItems: "center",
+  },
+  input: {
+    flex: 1,
+    padding: "8px",
+    borderRadius: "20px",
+    border: "1px solid #ccc",
+    outline: "none",
+  },
+  sendBtn: {
+    padding: "0 15px",
+    borderRadius: "20px",
+    border: "none",
+    background: "#000",
+    color: "#fff",
+    cursor: "pointer",
+    height: "35px",
+  },
+  fileLabel: {
+    cursor: "pointer",
+    fontSize: "20px",
+    color: "#666",
+    padding: "0 5px",
+  },
+  attachmentLink: {
+    color: "#007bff",
+    fontSize: "12px",
+    display: "block",
+    marginTop: "4px",
+    fontWeight: "bold",
+  },
+  imagePreview: {
+    maxWidth: "100%",
+    maxHeight: "150px",
+    borderRadius: "8px",
+    border: "1px solid #ddd",
+    display: "block",
+    margin: "5px auto",
+  },
 };
 
 export default CustomerChat;
