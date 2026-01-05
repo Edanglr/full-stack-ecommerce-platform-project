@@ -253,8 +253,8 @@ function App() {
             />
           </Routes>
 
-          {/* 🔴 GLOBAL LIVE CHAT (sadece login olmuş kullanıcı) */}
-          {user && <CustomerChat user={user} />}
+          {/* ✅ GLOBAL LIVE CHAT (Guest + Logged-in herkeste görünür) */}
+          <CustomerChat user={user} />
         </div>
       </Router>
     </CartProvider>
