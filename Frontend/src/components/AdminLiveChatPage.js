@@ -7,6 +7,8 @@ function AdminLiveChatPage({ user }) {
   const [customerDetails, setCustomerDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
+  const isObjectId = (v) => /^[0-9a-fA-F]{24}$/.test(String(v));
+
   /* ================================
      1️⃣ Chat Listesi (SOL PANEL)
   ================================= */
@@ -27,8 +29,8 @@ function AdminLiveChatPage({ user }) {
             name: c.customerName,
             chatId: c.chatId,
             lastText: c.lastText,
-            status: c.status || 'active',
-            updatedAt: c.updatedAt
+            status: c.status || "active",
+            updatedAt: c.updatedAt,
           }))
         );
       } catch (err) {
@@ -44,16 +46,30 @@ function AdminLiveChatPage({ user }) {
   ================================= */
   useEffect(() => {
     if (!selectedChat?.id) return;
+
+    // ✅ Guest ise backend’e user/orders sorma
+    if (!isObjectId(selectedChat.id)) {
+      setCustomerDetails({ user: { name: "Guest User" }, orders: [] });
+      setLoadingDetails(false);
+      return;
+    }
+
     const token = localStorage.getItem("token");
     const fetchDetails = async () => {
       try {
         setLoadingDetails(true);
         const [userRes, ordersRes] = await Promise.all([
-          fetch(`http://localhost:5050/api/chats/user-details/${selectedChat.id}`, { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`http://localhost:5050/api/chats/user-details/${selectedChat.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
         ]);
+
         const userData = await userRes.json();
         const ordersData = await ordersRes.json();
+
         setCustomerDetails({ user: userData.user, orders: ordersData || [] });
       } catch (err) {
         console.error("Customer details error:", err);
@@ -69,26 +85,34 @@ function AdminLiveChatPage({ user }) {
      3️⃣ Ürün İptal Etme Fonksiyonu
   ================================= */
   const handleCancelItem = async (orderId, productId, size, productName) => {
-    if (!window.confirm(`Are you sure you want to cancel "${productName}"? Stock will be restored.`)) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to cancel "${productName}"? Stock will be restored.`
+      )
+    )
+      return;
 
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`http://localhost:5050/api/orders/${orderId}/cancel-item`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ productId, size }),
-      });
+      const res = await fetch(
+        `http://localhost:5050/api/orders/${orderId}/cancel-item`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ productId, size }),
+        }
+      );
 
       if (res.ok) {
         alert("Item cancelled successfully.");
-        // Listeyi yenilemek için güncel siparişleri tekrar çek
-        const updatedOrders = await fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, { 
-          headers: { Authorization: `Bearer ${token}` } 
-        }).then(r => r.json());
-        setCustomerDetails(prev => ({ ...prev, orders: updatedOrders }));
+        const updatedOrders = await fetch(
+          `http://localhost:5050/api/orders/by-user/${selectedChat.id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        ).then((r) => r.json());
+        setCustomerDetails((prev) => ({ ...prev, orders: updatedOrders }));
       } else {
         const errData = await res.json();
         alert(errData.message || "Failed to cancel item.");
@@ -98,7 +122,6 @@ function AdminLiveChatPage({ user }) {
     }
   };
 
-
   return (
     <div style={styles.container}>
       {/* SOL PANEL */}
@@ -106,7 +129,7 @@ function AdminLiveChatPage({ user }) {
         <h3 style={styles.panelTitle}>Conversations</h3>
 
         {activeChats.map((c) => {
-          const isClosed = c.status === 'closed';
+          const isClosed = c.status === "closed";
           const isSelected = selectedChat?.chatId === c.chatId;
 
           return (
@@ -114,23 +137,33 @@ function AdminLiveChatPage({ user }) {
               key={c.chatId}
               style={{
                 ...styles.customerItem,
-                background: isSelected 
-                  ? "#eef6ff" 
-                  : (isClosed ? "#f9f9f9" : "transparent"),
+                background: isSelected
+                  ? "#eef6ff"
+                  : isClosed
+                  ? "#f9f9f9"
+                  : "transparent",
                 border: isSelected ? "1px solid #007bff" : "1px solid transparent",
                 opacity: isClosed && !isSelected ? 0.6 : 1,
               }}
               onClick={() => setSelectedChat(c)}
             >
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
                 <div style={{ fontWeight: "bold" }}>{c.name}</div>
-                <span style={{
-                    fontSize: 10, 
-                    padding: "2px 6px", 
-                    borderRadius: 4, 
+                <span
+                  style={{
+                    fontSize: 10,
+                    padding: "2px 6px",
+                    borderRadius: 4,
                     background: isClosed ? "#ddd" : "#28a745",
-                    color: isClosed ? "#555" : "#fff"
-                }}>
+                    color: isClosed ? "#555" : "#fff",
+                  }}
+                >
                   {isClosed ? "Ended" : "Active"}
                 </span>
               </div>
@@ -147,23 +180,31 @@ function AdminLiveChatPage({ user }) {
       <div style={styles.middlePanel}>
         {selectedChat ? (
           <>
-            {selectedChat.status === 'closed' && (
-               <div style={{ padding: 10, background: '#fff3cd', color: '#856404', marginBottom: 10, borderRadius: 5, fontSize: 13, textAlign:'center' }}>
-                 ⚠️ This chat has been ended by the customer.
-               </div>
+            {selectedChat.status === "closed" && (
+              <div
+                style={{
+                  padding: 10,
+                  background: "#fff3cd",
+                  color: "#856404",
+                  marginBottom: 10,
+                  borderRadius: 5,
+                  fontSize: 13,
+                  textAlign: "center",
+                }}
+              >
+                ⚠️ This chat has been ended by the customer.
+              </div>
             )}
-            
+
             <SupportChat
               supportUser={user}
               chatId={selectedChat.chatId}
               customerName={selectedChat.name}
-              isChatClosed={selectedChat.status === 'closed'} 
+              isChatClosed={selectedChat.status === "closed"}
             />
           </>
         ) : (
-          <div style={styles.emptyState}>
-            Select a chat to see conversation history.
-          </div>
+          <div style={styles.emptyState}>Select a chat to see conversation history.</div>
         )}
       </div>
 
@@ -175,53 +216,76 @@ function AdminLiveChatPage({ user }) {
           <div>
             <h4 style={styles.sectionTitle}>Customer Profile</h4>
             <div style={styles.profileBox}>
-              <p><strong>Name:</strong> {customerDetails.user?.name}</p>
-              <p><strong>Phone:</strong> {customerDetails.user?.phone || "N/A"}</p>
-              <p><strong>Address:</strong> {customerDetails.user?.address || "N/A"}</p>
+              <p>
+                <strong>Name:</strong> {customerDetails.user?.name || "Guest User"}
+              </p>
+              <p>
+                <strong>Phone:</strong> {customerDetails.user?.phone || "N/A"}
+              </p>
+              <p>
+                <strong>Address:</strong> {customerDetails.user?.address || "N/A"}
+              </p>
             </div>
             <hr style={styles.divider} />
-            
+
             <h4 style={styles.sectionTitle}>Order History</h4>
             {customerDetails.orders.length > 0 ? (
               customerDetails.orders.map((o) => (
                 <div key={o._id} style={styles.orderCard}>
                   <div style={styles.orderHeader}>
                     <span style={styles.orderId}>#{o.orderCode}</span>
-                    <span style={{ 
-                      ...styles.statusTag, 
-                      backgroundColor: o.status === "Delivered" ? "#dcf8c6" : "#fff3cd" 
-                    }}>
+                    <span
+                      style={{
+                        ...styles.statusTag,
+                        backgroundColor: o.status === "Delivered" ? "#dcf8c6" : "#fff3cd",
+                      }}
+                    >
                       {o.status}
                     </span>
                   </div>
 
                   <div style={styles.productList}>
-                    {o.items && o.items.map((item, idx) => {
-                      const actualProductId = item.productId?._id || item.productId || "N/A";
-                      const pSize = item.size || ""; // null ise boş string gönder
+                    {o.items &&
+                      o.items.map((item, idx) => {
+                        const actualProductId = item.productId?._id || item.productId || "N/A";
+                        const pSize = item.size || "";
 
-                      return (
-                        <div key={idx} style={styles.productItem}>
-                          <img src={item.imageUrl || item.image} alt={item.name} style={styles.productImg} />
-                          <div style={styles.productInfo}>
-                            <span style={styles.productName}>{item.name}</span>
-                            <span style={styles.productQty}>Qty: {item.quantity} | Size: {item.size || "-"}</span>
-                            <span style={{ fontSize: "10px", color: "#888", marginBottom: "2px" }}>
-                              ID: {actualProductId}
-                            </span>
-                            
-                            {o.status !== "Cancelled" && (
-                              <button
-                                onClick={() => handleCancelItem(o._id, actualProductId, pSize, item.name)}
-                                style={styles.cancelItemBtn}
+                        return (
+                          <div key={idx} style={styles.productItem}>
+                            <img
+                              src={item.imageUrl || item.image}
+                              alt={item.name}
+                              style={styles.productImg}
+                            />
+                            <div style={styles.productInfo}>
+                              <span style={styles.productName}>{item.name}</span>
+                              <span style={styles.productQty}>
+                                Qty: {item.quantity} | Size: {item.size || "-"}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  color: "#888",
+                                  marginBottom: "2px",
+                                }}
                               >
-                                Cancel Item
-                              </button>
-                            )}
+                                ID: {actualProductId}
+                              </span>
+
+                              {o.status !== "Cancelled" && (
+                                <button
+                                  onClick={() =>
+                                    handleCancelItem(o._id, actualProductId, pSize, item.name)
+                                  }
+                                  style={styles.cancelItemBtn}
+                                >
+                                  Cancel Item
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
 
                   <div style={styles.orderFooter}>
@@ -298,17 +362,17 @@ const styles = {
     fontWeight: "bold",
     textTransform: "uppercase",
   },
-  productList: { 
-    display: "flex", 
-    flexDirection: "column", 
-    gap: 10, 
-    marginTop: 10 
+  productList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    marginTop: 10,
   },
-  productItem: { 
-    display: "flex", 
-    gap: 12, 
+  productItem: {
+    display: "flex",
+    gap: 12,
     alignItems: "flex-start",
-    padding: "5px 0"
+    padding: "5px 0",
   },
   productImg: {
     width: "45px",
@@ -331,7 +395,7 @@ const styles = {
     borderRadius: "4px",
     cursor: "pointer",
     width: "fit-content",
-    fontWeight: "bold"
+    fontWeight: "bold",
   },
   orderFooter: {
     textAlign: "right",
