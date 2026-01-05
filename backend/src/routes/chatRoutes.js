@@ -1,17 +1,20 @@
 // backend/src/routes/chatRoutes.js
 import express from "express";
-import multer from "multer"; 
-import path from "path"; 
+import multer from "multer";
+import path from "path";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import Chat from "../models/Chat.js";
-import User from "../models/User.js"; // EKLENDİ
-import Order from "../models/Order.js"; // EKLENDİ
+import User from "../models/User.js";
+import Order from "../models/Order.js";
 
 const router = express.Router();
 
+// ✅ yardımcı: ObjectId mi?
+const isObjectId = (v) => /^[0-9a-fA-F]{24}$/.test(String(v));
+
 // 📂 Dosya Kayıt Konfigürasyonu
 const storage = multer.diskStorage({
-  destination: "uploads/chat/", 
+  destination: "uploads/chat/",
   filename: (req, file, cb) => {
     cb(null, Date.now() + path.extname(file.originalname));
   },
@@ -22,7 +25,7 @@ const upload = multer({ storage });
 // 📤 Dosya Yükleme Endpoint'i
 router.post("/upload", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded.");
-  
+
   const fileUrl = `http://localhost:5050/uploads/chat/${req.file.filename}`;
   res.json({ fileUrl, fileName: req.file.originalname });
 });
@@ -33,11 +36,10 @@ router.post("/upload", upload.single("file"), (req, res) => {
 
 router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res) => {
   try {
-    const chats = await Chat.find({})
-      .sort({ lastMessageAt: -1 })
-      .lean();
+    const chats = await Chat.find({}).sort({ lastMessageAt: -1 }).lean();
 
-    const userIds = chats.map((c) => c.customerId);
+    // ✅ SADECE gerçek user objectId’leri user tablosundan çek
+    const userIds = chats.map((c) => c.customerId).filter(isObjectId);
 
     const users = await User.find({ _id: { $in: userIds } })
       .select("_id name email phone address")
@@ -49,17 +51,17 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res)
     });
 
     const result = chats.map((c) => {
-      const user = userMap[c.customerId.toString()];
+      const guest = !isObjectId(c.customerId);
+      const user = !guest ? userMap[c.customerId.toString()] : null;
+
       return {
         chatId: c.chatId,
         customerId: c.customerId.toString(),
-        customerName: user?.name || "Unknown User",
-        customerEmail: user?.email,
+        customerName: guest ? "Guest User" : (user?.name || "Unknown User"),
+        customerEmail: guest ? null : user?.email,
         lastMessageAt: c.lastMessageAt,
-        status: c.status || 'active', // Durum bilgisini ekledik
-        lastText: c.messages?.length
-          ? c.messages[c.messages.length - 1].text
-          : "",
+        status: c.status || "active",
+        lastText: c.messages?.length ? c.messages[c.messages.length - 1].text : "",
       };
     });
 
@@ -77,6 +79,8 @@ router.get(
   async (req, res) => {
     try {
       const { customerId } = req.params;
+
+      // ✅ Guest ise burada 404 dönecek (frontend zaten skip edecek)
       const user = await User.findById(customerId).select("-password").lean();
       if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -105,8 +109,8 @@ router.get("/:chatId", async (req, res) => {
     if (!chat) {
       return res.json({ chatId, messages: [] });
     }
-    // Sohbetin kapalı olup olmadığını frontend'in anlaması için tüm objeyi dönüyoruz
-    res.json(chat); 
+
+    res.json(chat);
   } catch (err) {
     console.error("Fetch messages error:", err);
     res.status(500).json({ message: "Failed to fetch messages" });
@@ -114,20 +118,18 @@ router.get("/:chatId", async (req, res) => {
 });
 
 // ✅ Sohbeti Sonlandırma (Status: closed)
-// backend/src/routes/chatRoutes.js içindeki ilgili bölüm:
-
 router.put("/:chatId/close", async (req, res) => {
   try {
     const { chatId } = req.params;
-    
+
     const updatedChat = await Chat.findOneAndUpdate(
       { chatId: chatId },
-      { 
-        $set: { 
+      {
+        $set: {
           status: "closed",
-          messages: [] // ✅ Geçmişi tamamen silmek için ekleyin
-        } 
-      }, 
+          messages: [], // geçmişi sil
+        },
+      },
       { new: true }
     );
 
@@ -139,4 +141,5 @@ router.put("/:chatId/close", async (req, res) => {
     res.status(500).json({ message: "Error closing chat" });
   }
 });
+
 export default router;
