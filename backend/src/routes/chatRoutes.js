@@ -6,13 +6,12 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import Chat from "../models/Chat.js";
 import User from "../models/User.js";
 import Order from "../models/Order.js";
+import Favorite from "../models/Favorite.js";
 
 const router = express.Router();
 
-// ✅ yardımcı: ObjectId mi?
 const isObjectId = (v) => /^[0-9a-fA-F]{24}$/.test(String(v));
 
-// 📂 Dosya Kayıt Konfigürasyonu
 const storage = multer.diskStorage({
   destination: "uploads/chat/",
   filename: (req, file, cb) => {
@@ -22,7 +21,6 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// 📤 Dosya Yükleme Endpoint'i
 router.post("/upload", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded.");
 
@@ -30,15 +28,16 @@ router.post("/upload", upload.single("file"), (req, res) => {
   res.json({ fileUrl, fileName: req.file.originalname });
 });
 
-/* ============================================================
-   ADMIN / SUPPORT AGENT ROTalari
-   ============================================================ */
-
+/* SUPPORT AGENT ROUTES */
+/*
+GET /api/chats/admin
+Returns chat list for support agent, including claim info.
+Frontend can split into "Unclaimed" and "My Chats".
+*/
 router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res) => {
   try {
     const chats = await Chat.find({}).sort({ lastMessageAt: -1 }).lean();
 
-    // ✅ SADECE gerçek user objectId’leri user tablosundan çek
     const userIds = chats.map((c) => c.customerId).filter(isObjectId);
 
     const users = await User.find({ _id: { $in: userIds } })
@@ -62,6 +61,9 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res)
         lastMessageAt: c.lastMessageAt,
         status: c.status || "active",
         lastText: c.messages?.length ? c.messages[c.messages.length - 1].text : "",
+
+        claimedBy: c.claimedBy || null,
+        claimedAt: c.claimedAt || null,
       };
     });
 
@@ -72,34 +74,100 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res)
   }
 });
 
-router.get(
-  "/user-details/:customerId",
-  requireAuth,
-  requireRole("supportAgent"),
-  async (req, res) => {
-    try {
-      const { customerId } = req.params;
+/*
+POST /api/chats/:chatId/claim
+Atomic claim to prevent concurrency conflicts.
+*/
+router.post("/:chatId/claim", requireAuth, requireRole("supportAgent"), async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const agentId = String(req.user?.id || req.user?._id || "");
 
-      // ✅ Guest ise burada 404 dönecek (frontend zaten skip edecek)
-      const user = await User.findById(customerId).select("-password").lean();
-      if (!user) return res.status(404).json({ message: "User not found" });
+    if (!agentId) return res.status(401).json({ message: "Not authenticated." });
 
-      const orders = await Order.find({ user: customerId })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean();
+    const updated = await Chat.findOneAndUpdate(
+      {
+        chatId,
+        status: "active",
+        $or: [{ claimedBy: null }, { claimedBy: "" }],
+      },
+      {
+        $set: {
+          claimedBy: agentId,
+          claimedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
 
-      res.json({ user, orders: orders || [] });
-    } catch (err) {
-      console.error("User details error:", err);
-      res.status(500).json({ message: "Error fetching user details" });
+    if (!updated) {
+      const existing = await Chat.findOne({ chatId }).select("claimedBy status").lean();
+      if (!existing) return res.status(404).json({ message: "Chat not found." });
+
+      if (existing.status === "closed") {
+        return res.status(400).json({ message: "This chat is closed and cannot be claimed." });
+      }
+
+      return res.status(409).json({ message: "This chat was already claimed by another support agent." });
     }
-  }
-);
 
-/* ============================================================
-   GENEL CHAT ROTalari
-   ============================================================ */
+    return res.json({ message: "Chat claimed successfully.", chat: updated });
+  } catch (err) {
+    console.error("Claim chat error:", err);
+    return res.status(500).json({ message: "Failed to claim chat." });
+  }
+});
+
+/*
+GET /api/chats/user-details/:customerId
+Returns user profile, recent orders (with delivery status), and wishlist items.
+If customerId is not a valid ObjectId, it behaves as guest.
+*/
+router.get("/user-details/:customerId", requireAuth, requireRole("supportAgent"), async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    if (!isObjectId(customerId)) {
+      return res.json({
+        user: { name: "Guest User" },
+        orders: [],
+        favorites: [],
+      });
+    }
+
+    const user = await User.findById(customerId).select("-passwordHash").lean();
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const orders = await Order.find({ user: customerId })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    const favoritesDocs = await Favorite.find({ user: customerId })
+      .populate("product", "name imageUrl image price")
+      .lean();
+
+    const favorites = (favoritesDocs || [])
+      .map((f) => {
+        const p = f.product;
+        if (!p) return null;
+        return {
+          productId: p._id,
+          name: p.name,
+          price: p.price,
+          imageUrl: p.imageUrl || p.image || "https://via.placeholder.com/80?text=No+Image",
+        };
+      })
+      .filter(Boolean);
+
+    res.json({ user, orders: orders || [], favorites });
+  } catch (err) {
+    console.error("User details error:", err);
+    res.status(500).json({ message: "Error fetching user details" });
+  }
+});
+
+/* GENERAL CHAT ROUTES */
 
 router.get("/:chatId", async (req, res) => {
   try {
@@ -117,7 +185,6 @@ router.get("/:chatId", async (req, res) => {
   }
 });
 
-// ✅ Sohbeti Sonlandırma (Status: closed)
 router.put("/:chatId/close", async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -127,7 +194,7 @@ router.put("/:chatId/close", async (req, res) => {
       {
         $set: {
           status: "closed",
-          messages: [], // geçmişi sil
+          messages: [],
         },
       },
       { new: true }
