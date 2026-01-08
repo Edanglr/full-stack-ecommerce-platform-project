@@ -8,6 +8,7 @@ function OrderHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [creatingReturn, setCreatingReturn] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState(null);
+  const [downloadingInvoiceOrderId, setDownloadingInvoiceOrderId] = useState(null);
 
   const fetchOrders = async () => {
     try {
@@ -64,7 +65,7 @@ function OrderHistoryPage() {
 
       const productId =
         item.productId?._id ||
-        item.productId || // order.items içinde direkt id olabilir
+        item.productId ||
         item.product?._id ||
         null;
 
@@ -105,7 +106,6 @@ function OrderHistoryPage() {
     }
   };
 
-  // ✅ TASK 3: Cancel Order
   const handleCancelOrder = async (orderId) => {
     const confirm = window.confirm(
       "Are you sure you want to cancel this order? This action cannot be undone."
@@ -142,6 +142,51 @@ function OrderHistoryPage() {
       alert("Unexpected error while cancelling order.");
     } finally {
       setCancellingOrderId(null);
+    }
+  };
+
+  const handleDownloadInvoicePdf = async (orderId) => {
+    try {
+      setDownloadingInvoiceOrderId(orderId);
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("You must be logged in to download invoices.");
+        return;
+      }
+
+      const res = await fetch(
+        `http://localhost:5050/api/orders/${orderId}/invoice/pdf`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || "Failed to download invoice PDF.");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice-${orderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("DOWNLOAD INVOICE PDF ERROR:", err);
+      alert("Unexpected error while downloading invoice PDF.");
+    } finally {
+      setDownloadingInvoiceOrderId(null);
     }
   };
 
@@ -196,6 +241,9 @@ function OrderHistoryPage() {
 
         {orders.map((order) => {
           const canCancel = order.shippingStatus === "Processing";
+          const canRequestReturn = order.shippingStatus === "Delivered";
+          const canShowInvoiceButton =
+            order.hasInvoicePdf === true || Boolean(order.invoiceNumber);
 
           return (
             <div
@@ -225,24 +273,56 @@ function OrderHistoryPage() {
                     borderRadius: "4px",
                     fontWeight: "bold",
                     backgroundColor:
-                      order.shippingStatus === "Delivered" ? "#d4edda" : 
-                      order.shippingStatus === "In-transit" ? "#d1ecf1" : 
-                      "#fff3cd",
+                      order.shippingStatus === "Delivered"
+                        ? "#d4edda"
+                        : order.shippingStatus === "In-transit"
+                        ? "#d1ecf1"
+                        : "#fff3cd",
                     color:
-                      order.shippingStatus === "Delivered" ? "#155724" : 
-                      order.shippingStatus === "In-transit" ? "#0c5460" : 
-                      "#856404",
+                      order.shippingStatus === "Delivered"
+                        ? "#155724"
+                        : order.shippingStatus === "In-transit"
+                        ? "#0c5460"
+                        : "#856404",
                   }}
                 >
                   {order.shippingStatus || "Processing"}
                 </span>
                 <br />
                 <strong>Total:</strong> {order.totalAmount} TL
+                {order.invoiceNumber ? (
+                  <>
+                    <br />
+                    <strong>Invoice Number:</strong> {order.invoiceNumber}
+                  </>
+                ) : null}
               </div>
 
-              {/* ✅ TASK 3: Cancel Order Button */}
-              {canCancel && (
-                <div style={{ marginTop: "10px", marginBottom: "10px" }}>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                {canShowInvoiceButton && (
+                  <button
+                    onClick={() => handleDownloadInvoicePdf(order._id)}
+                    disabled={downloadingInvoiceOrderId === order._id}
+                    style={{
+                      padding: "8px 16px",
+                      backgroundColor: "black",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor:
+                        downloadingInvoiceOrderId === order._id
+                          ? "not-allowed"
+                          : "pointer",
+                      opacity: downloadingInvoiceOrderId === order._id ? 0.6 : 1,
+                    }}
+                  >
+                    {downloadingInvoiceOrderId === order._id
+                      ? "Downloading..."
+                      : "Download Invoice PDF"}
+                  </button>
+                )}
+
+                {canCancel && (
                   <button
                     onClick={() => handleCancelOrder(order._id)}
                     disabled={cancellingOrderId === order._id}
@@ -263,10 +343,9 @@ function OrderHistoryPage() {
                       ? "Cancelling..."
                       : "Cancel Order"}
                   </button>
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* Shipping history */}
               {order.shippingHistory && order.shippingHistory.length > 0 && (
                 <>
                   <h5 style={{ marginTop: "10px" }}>Shipping History</h5>
@@ -363,9 +442,15 @@ function OrderHistoryPage() {
                         color: "white",
                         border: "none",
                         borderRadius: "4px",
-                        cursor: "pointer",
+                        cursor: canRequestReturn ? "pointer" : "not-allowed",
+                        opacity: canRequestReturn ? 1 : 0.5,
                       }}
-                      disabled={creatingReturn}
+                      disabled={creatingReturn || !canRequestReturn}
+                      title={
+                        canRequestReturn
+                          ? "Request a return"
+                          : "Returns are only available for delivered orders"
+                      }
                     >
                       {creatingReturn ? "Sending..." : "Return"}
                     </button>
