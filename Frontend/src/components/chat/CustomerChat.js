@@ -1,17 +1,13 @@
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useChatSocket } from "../../hooks/useChatSocket";
 
-// basit id üretici (ekstra lib gerektirmez)
+// Simple id generator (no external library needed)
 function makeGuestId() {
-  return (
-    "guest-" +
-    Math.random().toString(16).slice(2) +
-    Date.now().toString(16)
-  );
+  return "guest-" + Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
 function CustomerChat({ user }) {
-  // ✅ Guest id: bir kez üret, kalıcı sakla
+  // Guest id: generate once and keep it persistent
   const guestId = useMemo(() => {
     const key = "guestChatId";
     let id = localStorage.getItem(key);
@@ -26,14 +22,14 @@ function CustomerChat({ user }) {
   const senderId = isLoggedIn ? (user._id || user.id) : guestId;
   const senderName = isLoggedIn ? (user.name || "Customer") : "Guest";
 
-  // ✅ Guest dahil herkes için chatId var
+  // Chat id exists for both guest and logged-in users
   const chatId = `chat-${senderId}`;
 
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
-  // Pencere durumunu yerel depolamada sakla
+  // Persist window open/close state
   const [open, setOpen] = useState(() => {
     const savedState = localStorage.getItem("chatWindowOpen");
     return savedState === "true";
@@ -43,7 +39,7 @@ function CustomerChat({ user }) {
     localStorage.setItem("chatWindowOpen", open);
   }, [open]);
 
-  // Geçmiş mesajları çek
+  // Fetch previous messages
   useEffect(() => {
     if (!chatId) return;
 
@@ -53,7 +49,7 @@ function CustomerChat({ user }) {
         const data = await res.json();
         const msgList = data.messages || (Array.isArray(data) ? data : []);
 
-        // Sohbet kapalıysa geçmişi gösterme
+        // If chat is closed, do not show history
         if (data.status === "closed") {
           setMessages([]);
         } else {
@@ -63,6 +59,7 @@ function CustomerChat({ user }) {
         console.error("Customer fetchMessages error:", err);
       }
     };
+
     fetchMessages();
   }, [chatId]);
 
@@ -76,7 +73,7 @@ function CustomerChat({ user }) {
   });
 
   const handleSend = () => {
-    if (!text.trim()) return; // ✅ login şartı kalktı
+    if (!text.trim()) return;
     sendMessage({
       chatId,
       senderId,
@@ -117,21 +114,20 @@ function CustomerChat({ user }) {
       alert("Failed to upload file.");
     } finally {
       setIsUploading(false);
-      // aynı dosyayı tekrar seçebilmek için:
+      // Reset file input so the same file can be selected again
       e.target.value = "";
     }
   };
 
   const handleEndChat = async () => {
     if (!window.confirm("End chat and clear history?")) return;
+
     try {
-      const response = await fetch(
-        `http://localhost:5050/api/chats/${chatId}/close`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      const response = await fetch(`http://localhost:5050/api/chats/${chatId}/close`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+      });
+
       if (response.ok) {
         setMessages([]);
         setOpen(false);
@@ -160,30 +156,25 @@ function CustomerChat({ user }) {
 
           <div style={styles.messages}>
             {messages.map((m, i) => {
-              const isImage =
-                m.fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(m.fileUrl);
+              const isImage = m.fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(m.fileUrl);
+
               return (
                 <div
                   key={i}
                   style={{
                     ...styles.message,
-                    alignSelf:
-                      m.senderRole === "customer" ? "flex-end" : "flex-start",
-                    backgroundColor:
-                      m.senderRole === "customer" ? "#dcf8c6" : "#f1f1f1",
+                    alignSelf: m.senderRole === "customer" ? "flex-end" : "flex-start",
+                    backgroundColor: m.senderRole === "customer" ? "#dcf8c6" : "#f1f1f1",
                   }}
                 >
                   <b style={{ fontSize: 11 }}>{m.senderName}</b>
                   <div>{m.text}</div>
+
                   {m.fileUrl && (
                     <div style={{ marginTop: "8px" }}>
                       {isImage ? (
                         <a href={m.fileUrl} target="_blank" rel="noreferrer">
-                          <img
-                            src={m.fileUrl}
-                            alt="attachment"
-                            style={styles.imagePreview}
-                          />
+                          <img src={m.fileUrl} alt="attachment" style={styles.imagePreview} />
                         </a>
                       ) : (
                         <a
@@ -192,7 +183,7 @@ function CustomerChat({ user }) {
                           rel="noreferrer"
                           style={styles.attachmentLink}
                         >
-                          📁 View Attachment
+                          View Attachment
                         </a>
                       )}
                     </div>
@@ -204,7 +195,7 @@ function CustomerChat({ user }) {
 
           <div style={styles.inputRow}>
             <label htmlFor="file-input" style={styles.fileLabel}>
-              📎
+              Attach
             </label>
             <input
               id="file-input"
@@ -213,6 +204,7 @@ function CustomerChat({ user }) {
               onChange={handleFileChange}
               disabled={isUploading}
             />
+
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -221,19 +213,17 @@ function CustomerChat({ user }) {
               disabled={isUploading}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
             />
-            <button
-              onClick={handleSend}
-              disabled={isUploading}
-              style={styles.sendBtn}
-            >
+
+            <button onClick={handleSend} disabled={isUploading} style={styles.sendBtn}>
               {isUploading ? "..." : "Send"}
             </button>
           </div>
         </div>
       )}
+
       {!open && (
         <button onClick={() => setOpen(true)} style={styles.floatingButton}>
-          💬
+          Chat
         </button>
       )}
     </>
@@ -250,7 +240,7 @@ const styles = {
     borderRadius: "50%",
     background: "#000",
     color: "#fff",
-    fontSize: 26,
+    fontSize: 14,
     border: "none",
     cursor: "pointer",
     zIndex: 9999,
@@ -335,9 +325,11 @@ const styles = {
   },
   fileLabel: {
     cursor: "pointer",
-    fontSize: "20px",
+    fontSize: "12px",
     color: "#666",
     padding: "0 5px",
+    userSelect: "none",
+    fontWeight: "bold",
   },
   attachmentLink: {
     color: "#007bff",
