@@ -1,14 +1,6 @@
 // Frontend/src/components/InvoicePage.js
 import React, { useEffect, useState } from "react";
-import {
-  Container,
-  Row,
-  Col,
-  Card,
-  Table,
-  Button,
-  Spinner,
-} from "react-bootstrap";
+import { Container, Row, Col, Card, Table, Button, Spinner } from "react-bootstrap";
 import { useLocation, useParams, useNavigate } from "react-router-dom";
 
 function InvoicePage() {
@@ -19,9 +11,9 @@ function InvoicePage() {
   const [invoice, setInvoice] = useState(location.state?.invoice || null);
   const [loading, setLoading] = useState(!location.state?.invoice);
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    // Eğer state üzerinden invoice geldiyse ekstra fetch yapma
     if (invoice) return;
 
     const fetchInvoice = async () => {
@@ -48,7 +40,7 @@ function InvoicePage() {
           }
         );
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
           setError(data.message || "Failed to load invoice.");
@@ -56,7 +48,7 @@ function InvoicePage() {
           return;
         }
 
-        setInvoice(data.invoice || data); // backend yapısına göre esnek
+        setInvoice(data.invoice || data);
         setLoading(false);
       } catch (err) {
         console.error("FETCH INVOICE ERROR:", err);
@@ -67,6 +59,49 @@ function InvoicePage() {
 
     fetchInvoice();
   }, [invoice, orderId]);
+
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloading(true);
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        alert("You must be logged in to download invoices.");
+        return;
+      }
+
+      const res = await fetch(
+        `http://localhost:5050/api/orders/${orderId}/invoice/pdf`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || "Failed to download invoice PDF.");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice-${orderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("DOWNLOAD INVOICE PDF ERROR:", err);
+      alert("Unexpected error while downloading invoice PDF.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
@@ -119,9 +154,7 @@ function InvoicePage() {
             <Card className="shadow-sm">
               <Card.Body className="text-center">
                 <Card.Title>No Invoice Data</Card.Title>
-                <p className="mt-3">
-                  Invoice details could not be found for this order.
-                </p>
+                <p className="mt-3">Invoice details could not be found for this order.</p>
                 <Button variant="dark" onClick={() => navigate("/")}>
                   Back to Home
                 </Button>
@@ -135,8 +168,7 @@ function InvoicePage() {
 
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   const shipping = invoice.shippingAddress || {};
-  const totalAmount =
-    typeof invoice.totalAmount === "number" ? invoice.totalAmount : 0;
+  const totalAmount = typeof invoice.totalAmount === "number" ? invoice.totalAmount : 0;
 
   return (
     <Container className="my-5">
@@ -149,12 +181,10 @@ function InvoicePage() {
                 <div>
                   <h3 className="mb-1">Invoice</h3>
                   <div className="text-muted">
-                    Invoice Number:{" "}
-                    <strong>{invoice.invoiceNumber || "-"}</strong>
+                    Invoice Number: <strong>{invoice.invoiceNumber || "-"}</strong>
                   </div>
                   <div className="text-muted">
-                    Date:{" "}
-                    <strong>{formatDate(invoice.createdAt || invoice.date)}</strong>
+                    Date: <strong>{formatDate(invoice.createdAt || invoice.date)}</strong>
                   </div>
                 </div>
                 <div className="text-end">
@@ -167,6 +197,16 @@ function InvoicePage() {
                     </>
                   )}
                 </div>
+              </div>
+
+              <div className="d-flex justify-content-end mb-3">
+                <Button
+                  variant="outline-dark"
+                  onClick={handleDownloadPdf}
+                  disabled={downloading}
+                >
+                  {downloading ? "Downloading..." : "Download PDF"}
+                </Button>
               </div>
 
               <hr />
@@ -204,8 +244,13 @@ function InvoicePage() {
                     </tr>
                   ) : (
                     items.map((item, idx) => {
-                      const qty = item.quantity || 0;
-                      const price = item.price || 0;
+                      const qty = Number(item.quantity || 0);
+                      const price = Number(
+                        item.unitPrice ??
+                          item.unitPriceAtPurchase ??
+                          item.price ??
+                          0
+                      );
                       const lineTotal = qty * price;
 
                       return (
@@ -214,7 +259,7 @@ function InvoicePage() {
                           <td>{item.size || item.variant || "-"}</td>
                           <td className="text-end">{qty}</td>
                           <td className="text-end">
-                            {price.toFixed ? price.toFixed(2) : price} TL
+                            {price.toFixed(2)} TL
                           </td>
                           <td className="text-end">
                             {lineTotal.toFixed(2)} TL
@@ -232,9 +277,7 @@ function InvoicePage() {
                     <Card.Body>
                       <div className="d-flex justify-content-between mb-2">
                         <span className="fw-bold">Total:</span>
-                        <span className="fw-bold">
-                          {totalAmount.toFixed(2)} TL
-                        </span>
+                        <span className="fw-bold">{totalAmount.toFixed(2)} TL</span>
                       </div>
                     </Card.Body>
                   </Card>
