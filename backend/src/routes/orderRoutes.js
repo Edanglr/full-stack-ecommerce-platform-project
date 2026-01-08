@@ -3,6 +3,9 @@ import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import User from "../models/User.js";
 
+import path from "path";
+import fs from "fs";
+
 import { generateTrackingCode } from "../utils/trackingCode.js";
 import { requireAuth, requireManager, requireRole } from "../middleware/auth.js";
 import { mockBankCharge } from "../utils/mockBank.js";
@@ -12,6 +15,16 @@ import { sendInvoiceEmail } from "../utils/email.js";
 const router = express.Router();
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+const canAccessAnyOrder = (role) =>
+  role === "salesManager" || role === "productManager" || role === "supportAgent" || role === "manager";
+
+const buildShippingAddress = (user, order) => ({
+  name: user?.name || "Customer",
+  address: user?.address || order?.deliveryAddress || "",
+  city: user?.city || "",
+  postalCode: user?.postalCode || user?.zip || "",
+});
 
 // 1) Yeni Sipariş Oluşturma
 router.post("/", requireAuth, async (req, res) => {
@@ -169,12 +182,7 @@ router.post("/", requireAuth, async (req, res) => {
         createdAt: newOrder.createdAt,
         items: newOrder.items,
         trackingCode: newOrder.trackingCode,
-        shippingAddress: {
-          name: user?.name || "Customer",
-          address: user?.address || newOrder.deliveryAddress || "",
-          city: user?.city || "",
-          postalCode: user?.postalCode || user?.zip || "",
-        },
+        shippingAddress: buildShippingAddress(user, newOrder),
       },
     });
   } catch (err) {
@@ -199,10 +207,16 @@ router.get("/my", requireAuth, async (req, res) => {
       totalAmount: order.totalAtPurchase ?? order.totalAmount,
       createdAt: order.createdAt,
       shippingHistory: order.shippingHistory || [],
+      invoiceNumber: order.invoiceNumber || "",
+      hasInvoicePdf: Boolean(order.invoicePdfPath),
       items: (order.items || []).map((i) => ({
         name: i.productId?.name || i.name || "Product",
         productId: i.productId?._id || i.productId,
-        imageUrl: i.productId?.imageUrl || i.productId?.image || i.imageUrl || "https://via.placeholder.com/80?text=No+Image",
+        imageUrl:
+          i.productId?.imageUrl ||
+          i.productId?.image ||
+          i.imageUrl ||
+          "https://via.placeholder.com/80?text=No+Image",
         price: i.unitPriceAtPurchase ?? i.price,
         quantity: i.quantity,
         size: i.size,
@@ -212,6 +226,82 @@ router.get("/my", requireAuth, async (req, res) => {
     res.json(formatted);
   } catch (err) {
     res.status(500).json({ message: "Order fetch error." });
+  }
+});
+
+// Invoice info (JSON)
+router.get("/:id/invoice", requireAuth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).lean();
+    if (!order) return res.status(404).json({ message: "Order not found." });
+
+    const privileged = canAccessAnyOrder(req.user.role);
+    if (!privileged && String(order.user) !== String(req.user.id)) {
+      return res.status(403).json({ message: "Not authorized to view this invoice." });
+    }
+
+    const user = await User.findById(order.user).select("-passwordHash").lean();
+
+    return res.json({
+      orderId: order._id,
+      invoiceNumber: order.invoiceNumber || "",
+      totalAmount: order.totalAtPurchase ?? order.totalAmount,
+      createdAt: order.createdAt,
+      trackingCode: order.trackingCode || "",
+      shippingStatus: order.shippingStatus || "",
+      shippingAddress: buildShippingAddress(user, order),
+      items: (order.items || []).map((it) => ({
+        productId: it.productId,
+        name: it.name,
+        size: it.size,
+        quantity: it.quantity,
+        unitPrice: it.unitPriceAtPurchase ?? it.price,
+      })),
+      hasInvoicePdf: Boolean(order.invoicePdfPath),
+    });
+  } catch (err) {
+    console.error("INVOICE META ERROR:", err);
+    return res.status(500).json({ message: "Error fetching invoice." });
+  }
+});
+
+// Invoice PDF download
+router.get("/:id/invoice/pdf", requireAuth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).lean();
+    if (!order) return res.status(404).json({ message: "Order not found." });
+
+    const privileged = canAccessAnyOrder(req.user.role);
+    if (!privileged && String(order.user) !== String(req.user.id)) {
+      return res.status(403).json({ message: "Not authorized to download this invoice." });
+    }
+
+    if (!order.invoicePdfPath) {
+      return res.status(404).json({ message: "Invoice PDF not found for this order." });
+    }
+
+    const invoicesDir = path.resolve(process.cwd(), "invoices");
+
+    const rawPath = order.invoicePdfPath;
+    const candidatePath = path.isAbsolute(rawPath) ? rawPath : path.join(process.cwd(), rawPath);
+    const resolvedPath = path.resolve(candidatePath);
+
+    if (!resolvedPath.startsWith(invoicesDir)) {
+      return res.status(400).json({ message: "Invalid invoice file path." });
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      return res.status(404).json({ message: "Invoice PDF file does not exist on server." });
+    }
+
+    const filename = `invoice-${order.invoiceNumber || String(order._id)}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+    return res.sendFile(resolvedPath);
+  } catch (err) {
+    console.error("INVOICE PDF ERROR:", err);
+    return res.status(500).json({ message: "Error downloading invoice PDF." });
   }
 });
 
@@ -343,12 +433,17 @@ router.get("/track/:trackingCode", async (req, res) => {
 // 7) Admin Delivery Görünümü
 router.get("/admin/deliveries", requireRole("productManager"), async (_req, res) => {
   try {
-    const orders = await Order.find({}).populate("user", "name email").lean().sort({ createdAt: -1 });
+    const orders = await Order.find({})
+      .populate("user", "name email")
+      .lean()
+      .sort({ createdAt: -1 });
 
     const deliveryList = orders.flatMap((order) =>
       (order.items || []).map((item) => ({
         deliveryId: order._id,
+        customerId: order.user?._id || order.user,       // added
         customerName: order.user?.name || order.user?.email || "Unknown",
+        productId: item.productId,                       // added
         productName: item.name,
         quantity: item.quantity,
         totalPrice: (item.unitPriceAtPurchase ?? item.price) * item.quantity,
@@ -358,6 +453,7 @@ router.get("/admin/deliveries", requireRole("productManager"), async (_req, res)
         createdAt: order.createdAt,
       }))
     );
+
     return res.json(deliveryList);
   } catch (err) {
     return res.status(500).json({ message: "Error fetching deliveries." });
