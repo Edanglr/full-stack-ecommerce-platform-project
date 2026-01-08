@@ -1,4 +1,3 @@
-// frontend/src/hooks/useChatSocket.js
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
@@ -15,7 +14,7 @@ export function useChatSocket({ chatId, onMessage, onAdminMessage }) {
     }
 
     if (onMessage) {
-      // 🔴 DÜZELTME: "receiveMessage" olan ismi "newMessage" yapıyoruz
+      // Use "newMessage" event name to match the server-side emitter
       socketRef.current.on("newMessage", (msg) => {
         onMessage(msg);
       });
