@@ -26,6 +26,16 @@ function pushOrderHistory(order, statusText) {
   });
 }
 
+function isWithinReturnWindow(orderCreatedAt, days) {
+  if (!orderCreatedAt) return false;
+  const created = new Date(orderCreatedAt);
+  if (Number.isNaN(created.getTime())) return false;
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays <= Number(days);
+}
+
 /*
 CUSTOMER
 POST /api/returns
@@ -50,6 +60,11 @@ router.post("/", requireAuth, async (req, res) => {
     const ship = String(order.shippingStatus || "").toLowerCase();
     if (ship !== "delivered") {
       return res.status(400).json({ message: "You can only return delivered orders." });
+    }
+
+    // Return window check: within 30 days of purchase (order createdAt)
+    if (!isWithinReturnWindow(order.createdAt, 30)) {
+      return res.status(400).json({ message: "Return window expired. You can only request a return within 30 days of purchase." });
     }
 
     const orderItem = (order.items || []).find((it) => {
@@ -196,7 +211,10 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
     }
 
     const qty = Number(ret.quantity || 1);
-    const refundedAmount = Number(orderItem.price || 0) * qty;
+
+    // Refund amount must match purchase-time price (discount applied at purchase)
+    const unitPriceAtPurchase = Number(orderItem.unitPriceAtPurchase ?? orderItem.price ?? 0);
+    const refundedAmount = unitPriceAtPurchase * qty;
 
     ret.status = "Approved";
     ret.refundedAmount = Math.round(refundedAmount * 100) / 100;
