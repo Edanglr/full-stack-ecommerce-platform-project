@@ -1,42 +1,41 @@
+// backend/src/models/Chat.js
 import mongoose from "mongoose";
 
-/**
- * messageSchema: 
- * Sohbet içerisindeki her bir mesajın yapısını belirler.
- */
+/*
+messageSchema: Defines each message structure inside a chat session.
+*/
 const messageSchema = new mongoose.Schema(
   {
-    senderId: { 
-      type: String, 
-      required: true 
+    senderId: {
+      type: String,
+      required: true,
     },
-    senderRole: { 
-      type: String, 
-      required: true 
+    senderRole: {
+      type: String,
+      required: true,
     },
-    senderName: { 
-      type: String, 
-      default: "User" 
+    senderName: {
+      type: String,
+      default: "User",
     },
-    text: { 
-      type: String, 
-      required: true 
+    text: {
+      type: String,
+      required: true,
     },
-    fileUrl: { 
-      type: String // 📎 Dosya eki yüklendiğinde URL buraya kaydedilir
+    fileUrl: {
+      type: String,
     },
-    timestamp: { 
-      type: Date, 
-      default: Date.now 
+    timestamp: {
+      type: Date,
+      default: Date.now,
     },
   },
   { _id: false }
 );
 
-/**
- * chatSchema: 
- * Bir müşteri ile destek ekibi arasındaki tüm oturumu temsil eder.
- */
+/*
+chatSchema: Represents a full session between a customer and the support team.
+*/
 const chatSchema = new mongoose.Schema(
   {
     chatId: {
@@ -50,12 +49,26 @@ const chatSchema = new mongoose.Schema(
       index: true,
       required: true,
     },
-    // ✅ Sohbetin aktif olup olmadığını buradan kontrol ediyoruz
+
     status: {
       type: String,
       enum: ["active", "closed"],
       default: "active",
     },
+
+    /*
+    Claiming fields for support agents. If claimedBy is null, chat is unclaimed.
+    */
+    claimedBy: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    claimedAt: {
+      type: Date,
+      default: null,
+    },
+
     messages: {
       type: [messageSchema],
       default: [],
