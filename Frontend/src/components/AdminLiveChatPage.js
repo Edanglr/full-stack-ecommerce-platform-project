@@ -1,76 +1,140 @@
-import React, { useEffect, useState } from "react";
+// Frontend/src/components/AdminLiveChatPage.js
+import React, { useEffect, useMemo, useState } from "react";
 import SupportChat from "./chat/SupportChat";
 
 function AdminLiveChatPage({ user }) {
-  const [activeChats, setActiveChats] = useState([]);
+  const [allChats, setAllChats] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [customerDetails, setCustomerDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [claimingChatId, setClaimingChatId] = useState(null);
+
+  const token = localStorage.getItem("token");
+  const supportAgentId = String(user?._id || user?.id || "");
 
   const isObjectId = (v) => /^[0-9a-fA-F]{24}$/.test(String(v));
 
-  /* ================================
-     1️⃣ Chat Listesi (SOL PANEL)
-  ================================= */
+  const fetchChats = async () => {
+    try {
+      const res = await fetch("http://localhost:5050/api/chats/admin", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      setAllChats(
+        (data || []).map((c) => ({
+          id: c.customerId,
+          name: c.customerName,
+          chatId: c.chatId,
+          lastText: c.lastText,
+          status: c.status || "active",
+          lastMessageAt: c.lastMessageAt,
+          claimedBy: c.claimedBy || null,
+          claimedAt: c.claimedAt || null,
+        }))
+      );
+    } catch (err) {
+      console.error("Chat list fetch error:", err);
+    }
+  };
+
   useEffect(() => {
-    const token = localStorage.getItem("token");
-
-    const fetchChats = async () => {
-      try {
-        const res = await fetch("http://localhost:5050/api/chats/admin", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        const data = await res.json();
-
-        setActiveChats(
-          (data || []).map((c) => ({
-            id: c.customerId,
-            name: c.customerName,
-            chatId: c.chatId,
-            lastText: c.lastText,
-            status: c.status || "active",
-            updatedAt: c.updatedAt,
-          }))
-        );
-      } catch (err) {
-        console.error("Chat list fetch error:", err);
-      }
-    };
-
     fetchChats();
+    // Optional refresh: you can add polling if you want, but not required for demo.
   }, []);
 
-  /* ================================
-     2️⃣ Kullanıcı Detayları ve Siparişler
-  ================================= */
+  const { unclaimedChats, myChats, otherClaimedChats } = useMemo(() => {
+    const active = (allChats || []).filter((c) => c.status !== "closed");
+    const closed = (allChats || []).filter((c) => c.status === "closed");
+
+    const unclaimed = active.filter((c) => !c.claimedBy);
+    const mine = active.filter((c) => c.claimedBy && c.claimedBy === supportAgentId);
+    const others = active.filter((c) => c.claimedBy && c.claimedBy !== supportAgentId);
+
+    // Keep closed chats visible under "My Chats" only if it was claimed by me (optional),
+    // otherwise it is not needed for the demo.
+    const minePlusClosed = [
+      ...mine,
+      ...closed.filter((c) => c.claimedBy && c.claimedBy === supportAgentId),
+    ];
+
+    return {
+      unclaimedChats: unclaimed,
+      myChats: minePlusClosed,
+      otherClaimedChats: others,
+    };
+  }, [allChats, supportAgentId]);
+
+  const handleClaim = async (chat) => {
+    if (!chat?.chatId) return;
+    if (!supportAgentId) {
+      alert("Support agent identity is missing. Please login again.");
+      return;
+    }
+
+    try {
+      setClaimingChatId(chat.chatId);
+
+      const res = await fetch(`http://localhost:5050/api/chats/${chat.chatId}/claim`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.message || "Failed to claim chat.");
+        return;
+      }
+
+      await fetchChats();
+      setSelectedChat({ ...chat, claimedBy: supportAgentId });
+    } catch (err) {
+      console.error("Claim error:", err);
+      alert("Failed to claim chat.");
+    } finally {
+      setClaimingChatId(null);
+    }
+  };
+
+  const canOpenChat = (chat) => {
+    if (!chat) return false;
+    if (chat.status === "closed") return true;
+    if (!chat.claimedBy) return false; // must claim before opening for the demo
+    if (chat.claimedBy !== supportAgentId) return false;
+    return true;
+  };
+
   useEffect(() => {
     if (!selectedChat?.id) return;
 
-    // ✅ Guest ise backend’e user/orders sorma
+    // If guest, do not fetch user/orders/favorites
     if (!isObjectId(selectedChat.id)) {
-      setCustomerDetails({ user: { name: "Guest User" }, orders: [] });
+      setCustomerDetails({ user: { name: "Guest User" }, orders: [], favorites: [] });
       setLoadingDetails(false);
       return;
     }
 
-    const token = localStorage.getItem("token");
     const fetchDetails = async () => {
       try {
         setLoadingDetails(true);
-        const [userRes, ordersRes] = await Promise.all([
-          fetch(`http://localhost:5050/api/chats/user-details/${selectedChat.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
 
-        const userData = await userRes.json();
-        const ordersData = await ordersRes.json();
+        const res = await fetch(
+          `http://localhost:5050/api/chats/user-details/${selectedChat.id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
 
-        setCustomerDetails({ user: userData.user, orders: ordersData || [] });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setCustomerDetails(null);
+          return;
+        }
+
+        setCustomerDetails({
+          user: data.user,
+          orders: data.orders || [],
+          favorites: data.favorites || [],
+        });
       } catch (err) {
         console.error("Customer details error:", err);
         setCustomerDetails(null);
@@ -78,140 +142,136 @@ function AdminLiveChatPage({ user }) {
         setLoadingDetails(false);
       }
     };
+
     fetchDetails();
   }, [selectedChat]);
 
-  /* ================================
-     3️⃣ Ürün İptal Etme Fonksiyonu
-  ================================= */
-  const handleCancelItem = async (orderId, productId, size, productName) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to cancel "${productName}"? Stock will be restored.`
-      )
-    )
-      return;
-
-    const token = localStorage.getItem("token");
-    try {
-      const res = await fetch(
-        `http://localhost:5050/api/orders/${orderId}/cancel-item`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ productId, size }),
-        }
-      );
-
-      if (res.ok) {
-        alert("Item cancelled successfully.");
-        const updatedOrders = await fetch(
-          `http://localhost:5050/api/orders/by-user/${selectedChat.id}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        ).then((r) => r.json());
-        setCustomerDetails((prev) => ({ ...prev, orders: updatedOrders }));
-      } else {
-        const errData = await res.json();
-        alert(errData.message || "Failed to cancel item.");
-      }
-    } catch (err) {
-      console.error("Cancel error:", err);
-    }
-  };
-
   return (
     <div style={styles.container}>
-      {/* SOL PANEL */}
+      {/* LEFT PANEL */}
       <div style={styles.leftPanel}>
-        <h3 style={styles.panelTitle}>Conversations</h3>
+        <h3 style={styles.panelTitle}>Unclaimed Conversations</h3>
 
-        {activeChats.map((c) => {
-          const isClosed = c.status === "closed";
-          const isSelected = selectedChat?.chatId === c.chatId;
+        {unclaimedChats.length === 0 ? (
+          <div style={styles.emptyStateSmall}>No unclaimed conversations.</div>
+        ) : (
+          unclaimedChats.map((c) => {
+            const isSelected = selectedChat?.chatId === c.chatId;
 
-          return (
-            <div
-              key={c.chatId}
-              style={{
-                ...styles.customerItem,
-                background: isSelected
-                  ? "#eef6ff"
-                  : isClosed
-                  ? "#f9f9f9"
-                  : "transparent",
-                border: isSelected ? "1px solid #007bff" : "1px solid transparent",
-                opacity: isClosed && !isSelected ? 0.6 : 1,
-              }}
-              onClick={() => setSelectedChat(c)}
-            >
+            return (
               <div
+                key={c.chatId}
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                  ...styles.customerItem,
+                  background: isSelected ? "#eef6ff" : "transparent",
+                  border: isSelected ? "1px solid #007bff" : "1px solid transparent",
                 }}
               >
-                <div style={{ fontWeight: "bold" }}>{c.name}</div>
-                <span
+                <div style={styles.chatRowTop}>
+                  <div style={{ fontWeight: "bold" }}>{c.name}</div>
+                  <span style={styles.tagActive}>Active</span>
+                </div>
+
+                <div style={styles.lastText}>
+                  {c.lastText ? c.lastText.substring(0, 30) + "..." : "No messages"}
+                </div>
+
+                <button
+                  onClick={() => handleClaim(c)}
+                  disabled={claimingChatId === c.chatId}
                   style={{
-                    fontSize: 10,
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                    background: isClosed ? "#ddd" : "#28a745",
-                    color: isClosed ? "#555" : "#fff",
+                    ...styles.claimBtn,
+                    opacity: claimingChatId === c.chatId ? 0.7 : 1,
+                    cursor: claimingChatId === c.chatId ? "not-allowed" : "pointer",
                   }}
                 >
-                  {isClosed ? "Ended" : "Active"}
-                </span>
+                  {claimingChatId === c.chatId ? "Claiming..." : "Claim"}
+                </button>
               </div>
+            );
+          })
+        )}
 
-              <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                {c.lastText ? c.lastText.substring(0, 30) + "..." : "No messages"}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+        <hr style={styles.divider} />
 
-      {/* ORTA PANEL */}
-      <div style={styles.middlePanel}>
-        {selectedChat ? (
-          <>
-            {selectedChat.status === "closed" && (
-              <div
-                style={{
-                  padding: 10,
-                  background: "#fff3cd",
-                  color: "#856404",
-                  marginBottom: 10,
-                  borderRadius: 5,
-                  fontSize: 13,
-                  textAlign: "center",
-                }}
-              >
-                ⚠️ This chat has been ended by the customer.
-              </div>
-            )}
+        <h3 style={styles.panelTitle}>My Conversations</h3>
 
-            <SupportChat
-              supportUser={user}
-              chatId={selectedChat.chatId}
-              customerName={selectedChat.name}
-              isChatClosed={selectedChat.status === "closed"}
-            />
-          </>
+        {myChats.length === 0 ? (
+          <div style={styles.emptyStateSmall}>No conversations claimed by you.</div>
         ) : (
-          <div style={styles.emptyState}>Select a chat to see conversation history.</div>
+          myChats.map((c) => {
+            const isClosed = c.status === "closed";
+            const isSelected = selectedChat?.chatId === c.chatId;
+
+            return (
+              <div
+                key={c.chatId}
+                style={{
+                  ...styles.customerItem,
+                  background: isSelected ? "#eef6ff" : isClosed ? "#f9f9f9" : "transparent",
+                  border: isSelected ? "1px solid #007bff" : "1px solid transparent",
+                  opacity: isClosed && !isSelected ? 0.6 : 1,
+                }}
+                onClick={() => setSelectedChat(c)}
+              >
+                <div style={styles.chatRowTop}>
+                  <div style={{ fontWeight: "bold" }}>{c.name}</div>
+                  <span style={isClosed ? styles.tagEnded : styles.tagActive}>
+                    {isClosed ? "Ended" : "Active"}
+                  </span>
+                </div>
+
+                <div style={styles.lastText}>
+                  {c.lastText ? c.lastText.substring(0, 30) + "..." : "No messages"}
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {otherClaimedChats.length > 0 && (
+          <>
+            <hr style={styles.divider} />
+            <h3 style={styles.panelTitle}>Claimed By Others</h3>
+            <div style={styles.emptyStateSmall}>
+              Some chats are claimed by other support agents and cannot be opened.
+            </div>
+          </>
         )}
       </div>
 
-      {/* SAĞ PANEL: Sipariş Geçmişi Bölümü */}
+      {/* MIDDLE PANEL */}
+      <div style={styles.middlePanel}>
+        {selectedChat ? (
+          canOpenChat(selectedChat) ? (
+            <>
+              {selectedChat.status === "closed" && (
+                <div style={styles.closedBanner}>
+                  This chat has been ended by the customer.
+                </div>
+              )}
+
+              <SupportChat
+                supportUser={user}
+                chatId={selectedChat.chatId}
+                customerName={selectedChat.name}
+                isChatClosed={selectedChat.status === "closed"}
+              />
+            </>
+          ) : (
+            <div style={styles.emptyState}>
+              Please claim this conversation before opening it.
+            </div>
+          )
+        ) : (
+          <div style={styles.emptyState}>Select a chat to view messages.</div>
+        )}
+      </div>
+
+      {/* RIGHT PANEL */}
       <div style={styles.rightPanel}>
         {loadingDetails ? (
-          <div style={styles.emptyState}>Loading user info...</div>
+          <div style={styles.emptyState}>Loading customer info...</div>
         ) : customerDetails ? (
           <div>
             <h4 style={styles.sectionTitle}>Customer Profile</h4>
@@ -220,76 +280,78 @@ function AdminLiveChatPage({ user }) {
                 <strong>Name:</strong> {customerDetails.user?.name || "Guest User"}
               </p>
               <p>
+                <strong>Email:</strong> {customerDetails.user?.email || "N/A"}
+              </p>
+              <p>
                 <strong>Phone:</strong> {customerDetails.user?.phone || "N/A"}
               </p>
               <p>
                 <strong>Address:</strong> {customerDetails.user?.address || "N/A"}
               </p>
             </div>
+
+            <hr style={styles.divider} />
+
+            <h4 style={styles.sectionTitle}>Wishlisted Items</h4>
+            {customerDetails.favorites && customerDetails.favorites.length > 0 ? (
+              <div style={styles.wishlistList}>
+                {customerDetails.favorites.map((p) => (
+                  <div key={p.productId} style={styles.wishlistItem}>
+                    <img
+                      src={p.imageUrl}
+                      alt={p.name}
+                      style={styles.wishlistImg}
+                      onError={(e) => {
+                        e.target.src = "https://via.placeholder.com/50?text=No+Image";
+                      }}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</span>
+                      <span style={{ fontSize: 12, color: "#666" }}>
+                        {typeof p.price === "number" ? `${p.price} TL` : "Price N/A"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={styles.noOrder}>No wishlist items found.</p>
+            )}
+
             <hr style={styles.divider} />
 
             <h4 style={styles.sectionTitle}>Order History</h4>
-            {customerDetails.orders.length > 0 ? (
+            {customerDetails.orders && customerDetails.orders.length > 0 ? (
               customerDetails.orders.map((o) => (
                 <div key={o._id} style={styles.orderCard}>
                   <div style={styles.orderHeader}>
-                    <span style={styles.orderId}>#{o.orderCode}</span>
+                    <span style={styles.orderId}>Order: {String(o._id).slice(-6).toUpperCase()}</span>
                     <span
                       style={{
                         ...styles.statusTag,
-                        backgroundColor: o.status === "Delivered" ? "#dcf8c6" : "#fff3cd",
+                        backgroundColor:
+                          String(o.shippingStatus || "") === "Delivered" ? "#dcf8c6" : "#fff3cd",
                       }}
                     >
-                      {o.status}
+                      {o.shippingStatus || "Processing"}
                     </span>
                   </div>
 
                   <div style={styles.productList}>
-                    {o.items &&
-                      o.items.map((item, idx) => {
-                        const actualProductId = item.productId?._id || item.productId || "N/A";
-                        const pSize = item.size || "";
-
-                        return (
-                          <div key={idx} style={styles.productItem}>
-                            <img
-                              src={item.imageUrl || item.image}
-                              alt={item.name}
-                              style={styles.productImg}
-                            />
-                            <div style={styles.productInfo}>
-                              <span style={styles.productName}>{item.name}</span>
-                              <span style={styles.productQty}>
-                                Qty: {item.quantity} | Size: {item.size || "-"}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: "10px",
-                                  color: "#888",
-                                  marginBottom: "2px",
-                                }}
-                              >
-                                ID: {actualProductId}
-                              </span>
-
-                              {o.status !== "Cancelled" && (
-                                <button
-                                  onClick={() =>
-                                    handleCancelItem(o._id, actualProductId, pSize, item.name)
-                                  }
-                                  style={styles.cancelItemBtn}
-                                >
-                                  Cancel Item
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    {(o.items || []).map((item, idx) => (
+                      <div key={idx} style={styles.productItem}>
+                        <div style={styles.productInfo}>
+                          <span style={styles.productName}>{item.name || "Product"}</span>
+                          <span style={styles.productQty}>
+                            Qty: {item.quantity} | Size: {item.size || "-"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   <div style={styles.orderFooter}>
-                    <strong>Total: {o.totalPrice} TL</strong>
+                    <strong>Total: {o.totalAtPurchase ?? o.totalAmount ?? 0} TL</strong>
                   </div>
                 </div>
               ))
@@ -298,7 +360,7 @@ function AdminLiveChatPage({ user }) {
             )}
           </div>
         ) : (
-          <div style={styles.emptyState}>User details will appear here.</div>
+          <div style={styles.emptyState}>Customer details will appear here.</div>
         )}
       </div>
     </div>
@@ -313,7 +375,7 @@ const styles = {
     backgroundColor: "#f0f2f5",
   },
   leftPanel: {
-    width: 300,
+    width: 330,
     borderRight: "1px solid #ddd",
     padding: 15,
     backgroundColor: "#fff",
@@ -326,22 +388,70 @@ const styles = {
     flexDirection: "column",
   },
   rightPanel: {
-    width: 350,
+    width: 380,
     padding: 20,
     borderLeft: "1px solid #ddd",
     backgroundColor: "#fff",
     overflowY: "auto",
   },
-  panelTitle: { fontSize: 18, marginBottom: 20, fontWeight: 600 },
+  panelTitle: { fontSize: 16, marginBottom: 12, fontWeight: 700 },
   sectionTitle: { fontSize: 16, fontWeight: "bold", marginBottom: 12 },
+
   customerItem: {
-    padding: 15,
-    cursor: "pointer",
+    padding: 12,
     borderRadius: 10,
     marginBottom: 10,
+    border: "1px solid transparent",
   },
+
+  chatRowTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  tagActive: {
+    fontSize: 10,
+    padding: "2px 6px",
+    borderRadius: 4,
+    background: "#28a745",
+    color: "#fff",
+  },
+  tagEnded: {
+    fontSize: 10,
+    padding: "2px 6px",
+    borderRadius: 4,
+    background: "#ddd",
+    color: "#555",
+  },
+
+  lastText: { fontSize: 12, color: "#666", marginTop: 6 },
+
+  claimBtn: {
+    marginTop: 10,
+    padding: "6px 10px",
+    fontSize: 12,
+    backgroundColor: "black",
+    color: "white",
+    border: "none",
+    borderRadius: 6,
+    width: "100%",
+  },
+
   profileBox: { fontSize: 14, lineHeight: 1.8 },
-  divider: { margin: "20px 0", borderTop: "1px solid #eee" },
+  divider: { margin: "16px 0", borderTop: "1px solid #eee" },
+
+  wishlistList: { display: "flex", flexDirection: "column", gap: 10 },
+  wishlistItem: { display: "flex", gap: 10, alignItems: "center" },
+  wishlistImg: {
+    width: 50,
+    height: 50,
+    objectFit: "cover",
+    borderRadius: 8,
+    border: "1px solid #ddd",
+    flexShrink: 0,
+  },
+
   orderCard: {
     padding: 12,
     background: "#f8f9fa",
@@ -365,54 +475,42 @@ const styles = {
   productList: {
     display: "flex",
     flexDirection: "column",
-    gap: 10,
+    gap: 8,
     marginTop: 10,
   },
-  productItem: {
-    display: "flex",
-    gap: 12,
-    alignItems: "flex-start",
-    padding: "5px 0",
-  },
-  productImg: {
-    width: "45px",
-    height: "45px",
-    objectFit: "cover",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    flexShrink: 0,
-  },
+  productItem: { display: "flex", gap: 12, alignItems: "flex-start" },
   productInfo: { display: "flex", flexDirection: "column" },
-  productName: { fontSize: 13, fontWeight: 500 },
+  productName: { fontSize: 13, fontWeight: 600 },
   productQty: { fontSize: 11, color: "#666" },
-  cancelItemBtn: {
-    marginTop: 5,
-    padding: "2px 8px",
-    fontSize: "10px",
-    backgroundColor: "#ff4d4d",
-    color: "white",
-    border: "none",
-    borderRadius: "4px",
-    cursor: "pointer",
-    width: "fit-content",
-    fontWeight: "bold",
-  },
+
   orderFooter: {
     textAlign: "right",
     marginTop: 12,
     paddingTop: 10,
     borderTop: "1px dashed #ccc",
   },
+
   emptyState: {
     padding: 40,
     textAlign: "center",
     color: "#aaa",
   },
-  noOrder: {
+  emptyStateSmall: {
+    padding: 12,
     textAlign: "center",
     color: "#999",
+    fontSize: 12,
+  },
+  noOrder: { textAlign: "center", color: "#999", fontSize: 13, marginTop: 10 },
+
+  closedBanner: {
+    padding: 10,
+    background: "#fff3cd",
+    color: "#856404",
+    marginBottom: 10,
+    borderRadius: 5,
     fontSize: 13,
-    marginTop: 20,
+    textAlign: "center",
   },
 };
 
