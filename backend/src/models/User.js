@@ -1,4 +1,3 @@
-// backend/src/models/User.js
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
@@ -20,6 +19,9 @@ const userSchema = new mongoose.Schema(
       enum: ["customer", "salesManager", "productManager", "supportAgent", "manager"],
       default: "customer",
     },
+
+    // Added for final demo requirements (customer tax ID)
+    taxId: { type: String, default: "", trim: true },
 
     phone: { type: String, default: "", trim: true },
     address: { type: String, default: "", trim: true },
