@@ -1,3 +1,4 @@
+// backend/src/routes/orderRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
@@ -17,7 +18,10 @@ const router = express.Router();
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const canAccessAnyOrder = (role) =>
-  role === "salesManager" || role === "productManager" || role === "supportAgent" || role === "manager";
+  role === "salesManager" ||
+  role === "productManager" ||
+  role === "supportAgent" ||
+  role === "manager";
 
 const buildShippingAddress = (user, order) => ({
   name: user?.name || "Customer",
@@ -26,7 +30,10 @@ const buildShippingAddress = (user, order) => ({
   postalCode: user?.postalCode || user?.zip || "",
 });
 
-// 1) Yeni Sipariş Oluşturma
+/*
+1) Create a new order
+POST /api/orders
+*/
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { items, deliveryAddress } = req.body;
@@ -37,11 +44,15 @@ router.post("/", requireAuth, async (req, res) => {
 
     const productById = new Map();
 
-    // Stock check.
+    // Stock check for each item
     for (const item of items) {
       const product = await Product.findById(item.productId);
-      if (!product) return res.status(404).json({ message: `Product not found: ${item.productId}` });
-      if (!item.size) return res.status(400).json({ message: `Size is required for product ${product.name}` });
+      if (!product) {
+        return res.status(404).json({ message: `Product not found: ${item.productId}` });
+      }
+      if (!item.size) {
+        return res.status(400).json({ message: `Size is required for product ${product.name}` });
+      }
 
       productById.set(String(item.productId), product);
 
@@ -56,16 +67,17 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    // Normalize items and compute purchase-time snapshots on the server.
+    // Normalize items and compute purchase-time snapshots on the server
     const normalizedItems = items.map((item) => {
       const product = productById.get(String(item.productId));
-
       const qty = Number(item.quantity) || 0;
 
       const listPrice =
         product.basePrice != null
           ? Number(product.basePrice)
-          : (product.originalPrice != null ? Number(product.originalPrice) : Number(product.price));
+          : product.originalPrice != null
+          ? Number(product.originalPrice)
+          : Number(product.price);
 
       const discountRate = Number(product.discountRate) || 0; // 0..1
       const unitPrice = round2(Math.max(0, listPrice * (1 - discountRate)));
@@ -78,7 +90,7 @@ router.post("/", requireAuth, async (req, res) => {
         size: item.size || "",
         quantity: qty,
 
-        // Kept for compatibility; always set from server effective price.
+        // Backward compatible field; always set from server effective price
         price: unitPrice,
 
         imageUrl: item.imageUrl || product.imageUrl || "",
@@ -91,7 +103,7 @@ router.post("/", requireAuth, async (req, res) => {
       };
     });
 
-    // Stock decrease.
+    // Decrease stock
     for (const item of normalizedItems) {
       const sizeKey = item.size;
       await Product.findByIdAndUpdate(item.productId, {
@@ -99,7 +111,7 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    // Totals based on snapshots.
+    // Totals based on snapshots
     const subtotalAtPurchase = round2(
       normalizedItems.reduce(
         (sum, it) => sum + (it.unitListPriceAtPurchase ?? it.price) * it.quantity,
@@ -114,20 +126,27 @@ router.post("/", requireAuth, async (req, res) => {
       )
     );
 
-    const discountTotalAtPurchase = round2(Math.max(0, subtotalAtPurchase - totalAtPurchase));
+    const discountTotalAtPurchase = round2(
+      Math.max(0, subtotalAtPurchase - totalAtPurchase)
+    );
 
     const profitRaw = normalizedItems.reduce((sum, it) => {
       if (it.unitCostAtPurchase == null) return sum;
-      return sum + (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) * it.quantity;
+      return (
+        sum +
+        (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) *
+          it.quantity
+      );
     }, 0);
 
-    const profitAtPurchase =
-      normalizedItems.some((it) => it.unitCostAtPurchase == null) ? null : round2(profitRaw);
+    const profitAtPurchase = normalizedItems.some((it) => it.unitCostAtPurchase == null)
+      ? null
+      : round2(profitRaw);
 
-    // Keep old totalAmount consistent for existing UI.
+    // Keep totalAmount consistent for existing UI
     const totalAmount = totalAtPurchase;
 
-    // Mock bankadan ödeme al
+    // Mock bank payment
     const paymentResult = await mockBankCharge({ amount: totalAmount, user: req.user });
     if (!paymentResult || !paymentResult.success) {
       return res.status(402).json({ message: "Payment failed. Please try again." });
@@ -191,7 +210,10 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-// 2) Kullanıcının Kendi Siparişlerini Çekmesi
+/*
+2) Fetch current user's orders
+GET /api/orders/my
+*/
 router.get("/my", requireAuth, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
@@ -229,7 +251,10 @@ router.get("/my", requireAuth, async (req, res) => {
   }
 });
 
-// Invoice info (JSON)
+/*
+Invoice info (JSON)
+GET /api/orders/:id/invoice
+*/
 router.get("/:id/invoice", requireAuth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id).lean();
@@ -265,7 +290,10 @@ router.get("/:id/invoice", requireAuth, async (req, res) => {
   }
 });
 
-// Invoice PDF download
+/*
+Invoice PDF download
+GET /api/orders/:id/invoice/pdf
+*/
 router.get("/:id/invoice/pdf", requireAuth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id).lean();
@@ -283,7 +311,9 @@ router.get("/:id/invoice/pdf", requireAuth, async (req, res) => {
     const invoicesDir = path.resolve(process.cwd(), "invoices");
 
     const rawPath = order.invoicePdfPath;
-    const candidatePath = path.isAbsolute(rawPath) ? rawPath : path.join(process.cwd(), rawPath);
+    const candidatePath = path.isAbsolute(rawPath)
+      ? rawPath
+      : path.join(process.cwd(), rawPath);
     const resolvedPath = path.resolve(candidatePath);
 
     if (!resolvedPath.startsWith(invoicesDir)) {
@@ -305,7 +335,10 @@ router.get("/:id/invoice/pdf", requireAuth, async (req, res) => {
   }
 });
 
-// 3) Sipariş İptali (Kullanıcı Tarafı - Full Order)
+/*
+3) Cancel an order (customer side)
+DELETE /api/orders/:id
+*/
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -316,7 +349,9 @@ router.delete("/:id", requireAuth, async (req, res) => {
     }
 
     if (order.shippingStatus !== "Processing") {
-      return res.status(400).json({ message: `Cannot cancel order in ${order.shippingStatus} status.` });
+      return res.status(400).json({
+        message: `Cannot cancel order in ${order.shippingStatus} status.`,
+      });
     }
 
     for (const item of order.items) {
@@ -326,76 +361,105 @@ router.delete("/:id", requireAuth, async (req, res) => {
     }
 
     order.shippingStatus = "Cancelled";
-    order.shippingHistory.push({ status: "Order cancelled by customer", date: new Date() });
+    order.shippingHistory.push({
+      status: "Order cancelled by customer",
+      date: new Date(),
+    });
     order.isCompleted = false;
     await order.save();
 
-    return res.json({ message: "Order cancelled successfully. Stock has been restored." });
+    return res.json({
+      message: "Order cancelled successfully. Stock has been restored.",
+    });
   } catch (err) {
     return res.status(500).json({ message: "Error while cancelling order." });
   }
 });
 
-// 4) Siparişten Ürün İptali (Support/Admin Tarafı)
-router.post("/:orderId/cancel-item", requireRole("supportAgent", "productManager"), async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { productId, size } = req.body;
+/*
+4) Cancel an item in an order (support/product manager side)
+POST /api/orders/:orderId/cancel-item
+*/
+router.post(
+  "/:orderId/cancel-item",
+  requireRole("supportAgent", "productManager"),
+  async (req, res) => {
+    try {
+      const { orderId } = req.params;
+      const { productId, size } = req.body;
 
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ message: "Order not found." });
+      const order = await Order.findById(orderId);
+      if (!order) return res.status(404).json({ message: "Order not found." });
 
-    const itemIndex = order.items.findIndex((it) => {
-      const itemProdId = it.productId._id ? it.productId._id.toString() : it.productId.toString();
-      const targetSize = size === "-" ? "" : (size || "");
-      const itemSize = it.size === "-" ? "" : (it.size || "");
-      return itemProdId === productId.toString() && itemSize === targetSize;
-    });
+      const itemIndex = order.items.findIndex((it) => {
+        const itemProdId = it.productId._id
+          ? it.productId._id.toString()
+          : it.productId.toString();
+        const targetSize = size === "-" ? "" : size || "";
+        const itemSize = it.size === "-" ? "" : it.size || "";
+        return itemProdId === productId.toString() && itemSize === targetSize;
+      });
 
-    if (itemIndex === -1) return res.status(404).json({ message: "Item not found." });
+      if (itemIndex === -1) return res.status(404).json({ message: "Item not found." });
 
-    const cancelledItem = order.items[itemIndex];
+      const cancelledItem = order.items[itemIndex];
 
-    await Product.findByIdAndUpdate(cancelledItem.productId, {
-      $inc: { [`sizes.${cancelledItem.size || ""}`]: cancelledItem.quantity }
-    });
+      await Product.findByIdAndUpdate(cancelledItem.productId, {
+        $inc: { [`sizes.${cancelledItem.size || ""}`]: cancelledItem.quantity },
+      });
 
-    const unit = Number(cancelledItem.unitPriceAtPurchase ?? cancelledItem.price) || 0;
-    const list = Number(cancelledItem.unitListPriceAtPurchase ?? cancelledItem.price) || 0;
-    const qty = Number(cancelledItem.quantity) || 0;
+      const unit = Number(cancelledItem.unitPriceAtPurchase ?? cancelledItem.price) || 0;
+      const list =
+        Number(cancelledItem.unitListPriceAtPurchase ?? cancelledItem.price) || 0;
+      const qty = Number(cancelledItem.quantity) || 0;
 
-    order.totalAmount = Math.max(0, (order.totalAtPurchase ?? order.totalAmount ?? 0) - unit * qty);
-    order.totalAtPurchase = order.totalAmount;
+      order.totalAmount = Math.max(
+        0,
+        (order.totalAtPurchase ?? order.totalAmount ?? 0) - unit * qty
+      );
+      order.totalAtPurchase = order.totalAmount;
 
-    if (order.subtotalAtPurchase != null) {
-      order.subtotalAtPurchase = Math.max(0, Number(order.subtotalAtPurchase) - list * qty);
-      order.discountTotalAtPurchase = Math.max(0, Number(order.subtotalAtPurchase) - Number(order.totalAtPurchase));
+      if (order.subtotalAtPurchase != null) {
+        order.subtotalAtPurchase = Math.max(
+          0,
+          Number(order.subtotalAtPurchase) - list * qty
+        );
+        order.discountTotalAtPurchase = Math.max(
+          0,
+          Number(order.subtotalAtPurchase) - Number(order.totalAtPurchase)
+        );
+      }
+
+      order.items.splice(itemIndex, 1);
+
+      order.shippingHistory.push({
+        status: `Item cancelled: ${cancelledItem.name}`,
+        date: new Date(),
+      });
+
+      order.shippingStatus = "Cancelled";
+      order.isCompleted = false;
+
+      await order.save();
+      res.json({ message: "Item successfully cancelled.", order });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error." });
     }
-
-    order.items.splice(itemIndex, 1);
-
-    order.shippingHistory.push({
-      status: `Item cancelled: ${cancelledItem.name}`,
-      date: new Date()
-    });
-
-    order.shippingStatus = "Cancelled";
-    order.isCompleted = false;
-
-    await order.save();
-    res.json({ message: "Item successfully cancelled.", order });
-  } catch (err) {
-    res.status(500).json({ message: "Internal server error." });
   }
-});
+);
 
-// 5) Sipariş Durumu Güncelleme (Admin)
+/*
+5) Update order status (product manager side)
+PUT /api/orders/:id/status
+*/
 router.put("/:id/status", requireRole("productManager"), async (req, res) => {
   try {
     const { status } = req.body;
     const allowed = ["Processing", "In-transit", "Delivered", "Cancelled"];
 
-    if (!allowed.includes(status)) return res.status(400).json({ message: "Invalid status." });
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ message: "Invalid status." });
+    }
 
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: "Order not found." });
@@ -411,7 +475,10 @@ router.put("/:id/status", requireRole("productManager"), async (req, res) => {
   }
 });
 
-// 6) Kargo Takibi
+/*
+6) Tracking endpoint
+GET /api/orders/track/:trackingCode
+*/
 router.get("/track/:trackingCode", async (req, res) => {
   try {
     const order = await Order.findOne({ trackingCode: req.params.trackingCode });
@@ -430,7 +497,10 @@ router.get("/track/:trackingCode", async (req, res) => {
   }
 });
 
-// 7) Admin Delivery Görünümü
+/*
+7) Delivery list (product manager side)
+GET /api/orders/admin/deliveries
+*/
 router.get("/admin/deliveries", requireRole("productManager"), async (_req, res) => {
   try {
     const orders = await Order.find({})
@@ -441,9 +511,9 @@ router.get("/admin/deliveries", requireRole("productManager"), async (_req, res)
     const deliveryList = orders.flatMap((order) =>
       (order.items || []).map((item) => ({
         deliveryId: order._id,
-        customerId: order.user?._id || order.user,       // added
+        customerId: order.user?._id || order.user,
         customerName: order.user?.name || order.user?.email || "Unknown",
-        productId: item.productId,                       // added
+        productId: item.productId,
         productName: item.name,
         quantity: item.quantity,
         totalPrice: (item.unitPriceAtPurchase ?? item.price) * item.quantity,
