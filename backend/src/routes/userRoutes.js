@@ -1,5 +1,3 @@
-// backend/src/routes/userRoutes.js
-
 import express from "express";
 import User from "../models/User.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -20,31 +18,35 @@ router.get("/me", requireAuth, async (req, res) => {
   }
 });
 
+router.get(
+  "/cart/:userId",
+  requireAuth,
+  requireRole("supportAgent", "productManager"),
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.params.userId)
+        .select("cart")
+        .populate({
+          path: "cart.items.productId",
+          select: "name price image imageUrl",
+        });
 
-router.get("/cart/:userId", requireAuth, requireRole("supportAgent", "productManager"), async (req, res) => {
-  try {
-    const user = await User.findById(req.params.userId)
-      .select("cart")
-      .populate({
-        path: "cart.items.productId",
-        select: "name price image imageUrl" 
-      });
-
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user.cart || { items: [] });
-  } catch (err) {
-    console.error("Cart fetch error:", err);
-    res.status(500).json({ message: "Error fetching user cart" });
+      if (!user) return res.status(404).json({ message: "User not found" });
+      res.json(user.cart || { items: [] });
+    } catch (err) {
+      console.error("Cart fetch error:", err);
+      res.status(500).json({ message: "Error fetching user cart" });
+    }
   }
-});
+);
 
 router.put("/update", requireAuth, async (req, res) => {
   try {
-    const { name, address, city, postalCode, phone } = req.body;
+    const { name, address, city, postalCode, phone, taxId } = req.body;
 
     const updated = await User.findByIdAndUpdate(
       req.user.id,
-      { name, address, city, postalCode, phone },
+      { name, address, city, postalCode, phone, taxId }, // ✅ taxId added (optional)
       { new: true }
     ).select("-passwordHash");
 
@@ -54,7 +56,6 @@ router.put("/update", requireAuth, async (req, res) => {
     res.status(500).json({ message: "Update failed" });
   }
 });
-
 
 router.put("/change-email", requireAuth, async (req, res) => {
   try {
