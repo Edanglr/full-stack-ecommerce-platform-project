@@ -28,6 +28,7 @@ function CustomerChat({ user }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isChatClosed, setIsChatClosed] = useState(false);
 
   // Persist window open/close state
   const [open, setOpen] = useState(() => {
@@ -49,8 +50,11 @@ function CustomerChat({ user }) {
         const data = await res.json();
         const msgList = data.messages || (Array.isArray(data) ? data : []);
 
+        const closed = data.status === "closed";
+        setIsChatClosed(closed);
+
         // If chat is closed, do not show history
-        if (data.status === "closed") {
+        if (closed) {
           setMessages([]);
         } else {
           setMessages(msgList);
@@ -73,7 +77,9 @@ function CustomerChat({ user }) {
   });
 
   const handleSend = () => {
+    if (isChatClosed || isUploading) return;
     if (!text.trim()) return;
+
     sendMessage({
       chatId,
       senderId,
@@ -81,11 +87,14 @@ function CustomerChat({ user }) {
       senderName,
       text,
     });
+
     setText("");
   };
 
   const handleFileChange = async (e) => {
-    const file = e.target.files[0];
+    if (isChatClosed || isUploading) return;
+
+    const file = e.target.files?.[0];
     if (!file) return;
 
     const formData = new FormData();
@@ -93,6 +102,7 @@ function CustomerChat({ user }) {
 
     try {
       setIsUploading(true);
+
       const res = await fetch("http://localhost:5050/api/chats/upload", {
         method: "POST",
         body: formData,
@@ -130,6 +140,7 @@ function CustomerChat({ user }) {
 
       if (response.ok) {
         setMessages([]);
+        setIsChatClosed(true);
         setOpen(false);
         localStorage.removeItem("chatWindowOpen");
       }
@@ -194,27 +205,42 @@ function CustomerChat({ user }) {
           </div>
 
           <div style={styles.inputRow}>
-            <label htmlFor="file-input" style={styles.fileLabel}>
+            <label
+              htmlFor="file-input"
+              style={{
+                ...styles.fileLabel,
+                opacity: isChatClosed || isUploading ? 0.6 : 1,
+                cursor: isChatClosed || isUploading ? "not-allowed" : "pointer",
+              }}
+            >
               Attach
             </label>
+
             <input
               id="file-input"
               type="file"
               style={{ display: "none" }}
               onChange={handleFileChange}
-              disabled={isUploading}
+              disabled={isUploading || isChatClosed}
             />
 
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={"Type a message..."}
-              style={styles.input}
-              disabled={isUploading}
+              placeholder={isChatClosed ? "Chat closed." : "Type a message..."}
+              style={{
+                ...styles.input,
+                backgroundColor: isChatClosed ? "#eee" : "#fff",
+              }}
+              disabled={isUploading || isChatClosed}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
             />
 
-            <button onClick={handleSend} disabled={isUploading} style={styles.sendBtn}>
+            <button
+              onClick={handleSend}
+              disabled={isUploading || isChatClosed}
+              style={styles.sendBtn}
+            >
               {isUploading ? "..." : "Send"}
             </button>
           </div>
