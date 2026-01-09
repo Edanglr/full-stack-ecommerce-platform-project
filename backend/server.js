@@ -1,3 +1,4 @@
+// backend/server.js
 import "dotenv/config";
 
 import express from "express";
@@ -18,8 +19,10 @@ import favoriteRoutes from "./src/routes/favoriteRoutes.js";
 import returnRoutes from "./src/routes/returnRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
 import chatSocket from "./src/socket/chatSocket.js";
-
 import salesManagerRoutes from "./src/routes/salesManagerRoutes.js";
+
+// NEW: categories
+import categoryRoutes from "./src/routes/categoryRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +60,9 @@ app.use("/api/returns", returnRoutes);
 app.use("/api/chats", chatRoutes);
 
 app.use("/api/sales", salesManagerRoutes);
+
+// NEW: categories
+app.use("/api/categories", categoryRoutes);
 
 const io = new Server(server, {
   cors: {
