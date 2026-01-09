@@ -1,3 +1,4 @@
+// backend/src/routes/chatRoutes.js
 import express from "express";
 import multer from "multer";
 import path from "path";
@@ -56,7 +57,7 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res)
       return {
         chatId: c.chatId,
         customerId: c.customerId.toString(),
-        customerName: guest ? "Guest User" : (user?.name || "Unknown User"),
+        customerName: guest ? "Guest User" : user?.name || "Unknown User",
         customerEmail: guest ? null : user?.email,
         lastMessageAt: c.lastMessageAt,
         status: c.status || "active",
@@ -92,49 +93,44 @@ router.put("/admin/:chatId/claim", requireAuth, requireRole("supportAgent"), asy
   }
 });
 
-router.get(
-  "/user-details/:customerId",
-  requireAuth,
-  requireRole("supportAgent"),
-  async (req, res) => {
-    try {
-      const { customerId } = req.params;
+router.get("/user-details/:customerId", requireAuth, requireRole("supportAgent"), async (req, res) => {
+  try {
+    const { customerId } = req.params;
 
-      if (!isObjectId(customerId)) {
-        return res.json({
-          user: { name: "Guest User" },
-          orders: [],
-          favorites: [],
-        });
-      }
-
-      const user = await User.findById(customerId).select("-passwordHash -password").lean();
-      if (!user) return res.status(404).json({ message: "User not found" });
-
-      const orders = await Order.find({ user: customerId })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean();
-
-      const favoritesDoc = await Favorite.findOne({ userId: customerId })
-        .populate("items.productId", "name imageUrl image price")
-        .lean();
-
-      const favorites = (favoritesDoc?.items || []).map((it) => ({
-        productId: it.productId?._id || it.productId,
-        name: it.productId?.name || "Product",
-        imageUrl: it.productId?.imageUrl || it.productId?.image || "",
-        price: it.productId?.price ?? null,
-        createdAt: it.createdAt || null,
-      }));
-
-      return res.json({ user, orders: orders || [], favorites });
-    } catch (err) {
-      console.error("User details error:", err);
-      return res.status(500).json({ message: "Error fetching user details" });
+    if (!isObjectId(customerId)) {
+      return res.json({
+        user: { name: "Guest User" },
+        orders: [],
+        favorites: [],
+      });
     }
+
+    const user = await User.findById(customerId).select("-passwordHash -password").lean();
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const orders = await Order.find({ user: customerId })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    const favoritesDoc = await Favorite.findOne({ userId: customerId })
+      .populate("items.productId", "name imageUrl image price")
+      .lean();
+
+    const favorites = (favoritesDoc?.items || []).map((it) => ({
+      productId: it.productId?._id || it.productId,
+      name: it.productId?.name || "Product",
+      imageUrl: it.productId?.imageUrl || it.productId?.image || "",
+      price: it.productId?.price ?? null,
+      createdAt: it.createdAt || null,
+    }));
+
+    return res.json({ user, orders: orders || [], favorites });
+  } catch (err) {
+    console.error("User details error:", err);
+    return res.status(500).json({ message: "Error fetching user details" });
   }
-);
+});
 
 /*
 General chat routes
