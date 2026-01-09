@@ -1,3 +1,4 @@
+// Frontend/src/components/AdminDeliveriesPage.js
 import React, { useEffect, useMemo, useState } from "react";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5050";
@@ -76,6 +77,7 @@ export default function AdminDeliveriesPage() {
       if (!map[id]) {
         map[id] = {
           orderId: row.deliveryId,
+          customerId: row.customerId,
           customerName: row.customerName,
           deliveryAddress: row.deliveryAddress,
           trackingCode: row.trackingCode,
@@ -85,6 +87,7 @@ export default function AdminDeliveriesPage() {
         };
       }
       map[id].items.push({
+        productId: row.productId,
         productName: row.productName,
         quantity: row.quantity,
         totalPrice: row.totalPrice,
@@ -104,11 +107,12 @@ export default function AdminDeliveriesPage() {
 
       const fields = [
         o.orderId,
+        o.customerId,
         o.customerName,
         o.deliveryAddress,
         o.trackingCode,
         o.shippingStatus,
-        ...(o.items || []).map((i) => i.productName),
+        ...(o.items || []).map((i) => `${i.productId} ${i.productName}`),
       ]
         .filter(Boolean)
         .join(" ")
@@ -206,7 +210,7 @@ export default function AdminDeliveriesPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="order id, tracking code, customer, address, product..."
+            placeholder="delivery id, customer id, tracking, customer, address, product..."
             style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc", width: "100%" }}
           />
         </div>
@@ -218,10 +222,22 @@ export default function AdminDeliveriesPage() {
 
       {/* Orders table */}
       <div style={{ marginTop: 12, background: "white", border: "1px solid #eee", borderRadius: 10, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1150 }}>
           <thead>
             <tr style={{ background: "#fafafa" }}>
-              {["Created", "Order", "Tracking", "Customer", "Address", "Items", "Current", "Update"].map((h) => (
+              {[
+                "Created",
+                "Delivery ID",
+                "Customer ID",
+                "Tracking",
+                "Customer",
+                "Address",
+                "Product ID(s)",
+                "Qty",
+                "Total",
+                "Status",
+                "Update",
+              ].map((h) => (
                 <th
                   key={h}
                   style={{
@@ -238,80 +254,105 @@ export default function AdminDeliveriesPage() {
           </thead>
 
           <tbody>
-            {filtered.map((o) => (
-              <tr key={o.orderId} style={{ borderBottom: "1px solid #f2f2f2" }}>
-                <td style={{ padding: "10px 10px", fontSize: 13 }}>{formatDateTime(o.createdAt)}</td>
-                <td style={{ padding: "10px 10px", fontSize: 13, fontWeight: 800 }}>
-                  {String(o.orderId).slice(-8)}
-                </td>
-                <td style={{ padding: "10px 10px", fontSize: 13 }}>{o.trackingCode || ""}</td>
-                <td style={{ padding: "10px 10px", fontSize: 13 }}>{o.customerName || ""}</td>
-                <td style={{ padding: "10px 10px", fontSize: 13 }}>{o.deliveryAddress || ""}</td>
+            {filtered.map((o) => {
+              const totalQty = (o.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+              const totalPrice = (o.items || []).reduce((s, it) => s + (Number(it.totalPrice) || 0), 0);
 
-                <td style={{ padding: "10px 10px", fontSize: 13 }}>
-                  {(o.items || []).slice(0, 4).map((it, idx) => (
-                    <div key={idx} style={{ lineHeight: 1.4 }}>
-                      • {it.productName} (x{it.quantity})
+              const productIds = (o.items || [])
+                .map((it) => it.productId)
+                .filter(Boolean)
+                .map((id) => String(id).slice(-8))
+                .join(", ");
+
+              return (
+                <tr key={o.orderId} style={{ borderBottom: "1px solid #f2f2f2" }}>
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>{formatDateTime(o.createdAt)}</td>
+
+                  <td style={{ padding: "10px 10px", fontSize: 13, fontWeight: 800 }}>
+                    {String(o.orderId).slice(-8)}
+                  </td>
+
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>
+                    {o.customerId ? String(o.customerId).slice(-8) : ""}
+                  </td>
+
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>{o.trackingCode || ""}</td>
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>{o.customerName || ""}</td>
+
+                  <td
+                    style={{
+                      padding: "10px 10px",
+                      fontSize: 13,
+                      maxWidth: 260,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                    title={o.deliveryAddress || ""}
+                  >
+                    {o.deliveryAddress || ""}
+                  </td>
+
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>{productIds}</td>
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>{totalQty}</td>
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>{totalPrice.toFixed(2)}</td>
+
+                  <td style={{ padding: "10px 10px", fontSize: 13, fontWeight: 800 }}>{o.shippingStatus}</td>
+
+                  <td style={{ padding: "10px 10px", fontSize: 13 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        disabled={loading}
+                        onClick={() => updateStatus(o.orderId, "Processing")}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ccc",
+                          background: "white",
+                          cursor: loading ? "not-allowed" : "pointer",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Processing
+                      </button>
+                      <button
+                        disabled={loading}
+                        onClick={() => updateStatus(o.orderId, "In-transit")}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ccc",
+                          background: "white",
+                          cursor: loading ? "not-allowed" : "pointer",
+                          fontWeight: 700,
+                        }}
+                      >
+                        In-transit
+                      </button>
+                      <button
+                        disabled={loading}
+                        onClick={() => updateStatus(o.orderId, "Delivered")}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #222",
+                          background: "#222",
+                          color: "white",
+                          cursor: loading ? "not-allowed" : "pointer",
+                          fontWeight: 800,
+                        }}
+                      >
+                        Delivered
+                      </button>
                     </div>
-                  ))}
-                  {(o.items || []).length > 4 && <div style={{ opacity: 0.7 }}>+ more...</div>}
-                </td>
-
-                <td style={{ padding: "10px 10px", fontSize: 13, fontWeight: 700 }}>{o.shippingStatus}</td>
-
-                <td style={{ padding: "10px 10px", fontSize: 13 }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      disabled={loading}
-                      onClick={() => updateStatus(o.orderId, "Processing")}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #ccc",
-                        background: "white",
-                        cursor: loading ? "not-allowed" : "pointer",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Processing
-                    </button>
-                    <button
-                      disabled={loading}
-                      onClick={() => updateStatus(o.orderId, "In-transit")}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #ccc",
-                        background: "white",
-                        cursor: loading ? "not-allowed" : "pointer",
-                        fontWeight: 700,
-                      }}
-                    >
-                      In-transit
-                    </button>
-                    <button
-                      disabled={loading}
-                      onClick={() => updateStatus(o.orderId, "Delivered")}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #222",
-                        background: "#222",
-                        color: "white",
-                        cursor: loading ? "not-allowed" : "pointer",
-                        fontWeight: 800,
-                      }}
-                    >
-                      Delivered
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                </tr>
+              );
+            })}
 
             {!filtered.length && (
               <tr>
-                <td colSpan={8} style={{ padding: 14, textAlign: "center", opacity: 0.75 }}>
+                <td colSpan={11} style={{ padding: 14, textAlign: "center", opacity: 0.75 }}>
                   No orders found.
                 </td>
               </tr>
