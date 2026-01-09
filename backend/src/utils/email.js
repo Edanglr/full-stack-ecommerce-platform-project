@@ -1,3 +1,4 @@
+// backend/src/utils/email.js
 import nodemailer from "nodemailer";
 
 const SMTP_HOST = process.env.SMTP_HOST;
@@ -16,21 +17,38 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export async function sendInvoiceEmail({ to, name, orderId, pdfBuffer }) {
+/**
+ * Invoice email
+ * Supports BOTH:
+ *  - pdfBuffer (preferred)
+ *  - pdfPath (fallback, used by current orderRoutes)
+ */
+export async function sendInvoiceEmail({ to, name, orderId, pdfBuffer, pdfPath }) {
   try {
     if (!to) return;
+
+    const safeOrderId = orderId || "order";
+    const safeName = name || "Customer";
+
+    const attachments = [];
+    if (pdfBuffer) {
+      attachments.push({
+        filename: `invoice-${safeOrderId}.pdf`,
+        content: pdfBuffer,
+      });
+    } else if (pdfPath) {
+      attachments.push({
+        filename: `invoice-${safeOrderId}.pdf`,
+        path: pdfPath,
+      });
+    }
 
     const mailOptions = {
       from: SMTP_FROM || SMTP_USER,
       to,
       subject: "Your Invoice",
-      text: `Hi ${name || "Customer"},\n\nYour invoice for order ${orderId} is attached.\n\nLa Strada`,
-      attachments: [
-        {
-          filename: `invoice-${orderId}.pdf`,
-          content: pdfBuffer,
-        },
-      ],
+      text: `Hi ${safeName},\n\nYour invoice for order ${safeOrderId} is attached.\n\nLa Strada`,
+      attachments,
     };
 
     await transporter.sendMail(mailOptions);
@@ -40,8 +58,7 @@ export async function sendInvoiceEmail({ to, name, orderId, pdfBuffer }) {
 }
 
 export async function sendDiscountEmail(toEmail, userName, products, discountRate) {
-  // discountRate comes as decimal: 0.20
-  const pct = Math.round(Number(discountRate) * 100); // => 20
+  const pct = Math.round(Number(discountRate) * 100);
 
   const safeName = userName || "there";
   const items = Array.isArray(products) ? products : [];
@@ -63,28 +80,16 @@ export async function sendDiscountEmail(toEmail, userName, products, discountRat
     `Visit La Strada to check the updated prices.\n\n` +
     `Best regards,\nLa Strada Team`;
 
-  // Buradan sonrası sende zaten nodemailer/transport ile gönderme kısmı.
-  // Aşağıdaki satırlar sende farklıysa, text/subject kısmını aynı bırakıp kendi send logic’ini koru.
   return await transporter.sendMail({
     from: `"Campus Shop" <${SMTP_FROM || SMTP_USER}>`,
-
     to: toEmail,
     subject,
     text,
   });
 }
 
-
 /**
  * Refund approval email
- * @param {Object} params
- * @param {string} params.to
- * @param {string} params.name
- * @param {string} params.returnId
- * @param {string} params.orderId
- * @param {string} params.productName
- * @param {number} params.quantity
- * @param {number} params.refundedAmount
  */
 export async function sendRefundApprovalEmail({
   to,
