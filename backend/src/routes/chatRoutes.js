@@ -22,6 +22,10 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+/*
+File upload (customer/support)
+POST /api/chats/upload
+*/
 router.post("/upload", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded.");
 
@@ -33,6 +37,10 @@ router.post("/upload", upload.single("file"), (req, res) => {
 Admin/support routes
 */
 
+/*
+List all chats for support agents
+GET /api/chats/admin
+*/
 router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res) => {
   try {
     const chats = await Chat.find({}).sort({ lastMessageAt: -1 }).lean();
@@ -74,68 +82,91 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (_req, res)
   }
 });
 
-router.put("/admin/:chatId/claim", requireAuth, requireRole("supportAgent"), async (req, res) => {
-  try {
-    const { chatId } = req.params;
-    const supporterId = req.user?.id || req.user?._id;
+/*
+Claim a chat for the current support agent
+PUT /api/chats/admin/:chatId/claim
+*/
+router.put(
+  "/admin/:chatId/claim",
+  requireAuth,
+  requireRole("supportAgent"),
+  async (req, res) => {
+    try {
+      const { chatId } = req.params;
+      const supporterId = req.user?.id || req.user?._id;
 
-    const updated = await Chat.findOneAndUpdate(
-      { chatId },
-      { $set: { claimedBy: String(supporterId), claimedAt: new Date() } },
-      { new: true }
-    ).lean();
+      const updated = await Chat.findOneAndUpdate(
+        { chatId },
+        { $set: { claimedBy: String(supporterId), claimedAt: new Date() } },
+        { new: true }
+      ).lean();
 
-    if (!updated) return res.status(404).json({ message: "Chat not found" });
-    return res.json({ message: "Chat claimed.", chat: updated });
-  } catch (err) {
-    console.error("Claim chat error:", err);
-    return res.status(500).json({ message: "Failed to claim chat" });
-  }
-});
-
-router.get("/user-details/:customerId", requireAuth, requireRole("supportAgent"), async (req, res) => {
-  try {
-    const { customerId } = req.params;
-
-    if (!isObjectId(customerId)) {
-      return res.json({
-        user: { name: "Guest User" },
-        orders: [],
-        favorites: [],
-      });
+      if (!updated) return res.status(404).json({ message: "Chat not found" });
+      return res.json({ message: "Chat claimed.", chat: updated });
+    } catch (err) {
+      console.error("Claim chat error:", err);
+      return res.status(500).json({ message: "Failed to claim chat" });
     }
-
-    const user = await User.findById(customerId).select("-passwordHash -password").lean();
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    const orders = await Order.find({ user: customerId })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean();
-
-    const favoritesDoc = await Favorite.findOne({ userId: customerId })
-      .populate("items.productId", "name imageUrl image price")
-      .lean();
-
-    const favorites = (favoritesDoc?.items || []).map((it) => ({
-      productId: it.productId?._id || it.productId,
-      name: it.productId?.name || "Product",
-      imageUrl: it.productId?.imageUrl || it.productId?.image || "",
-      price: it.productId?.price ?? null,
-      createdAt: it.createdAt || null,
-    }));
-
-    return res.json({ user, orders: orders || [], favorites });
-  } catch (err) {
-    console.error("User details error:", err);
-    return res.status(500).json({ message: "Error fetching user details" });
   }
-});
+);
+
+/*
+Get user profile + last orders + wishlist for support agents
+GET /api/chats/user-details/:customerId
+*/
+router.get(
+  "/user-details/:customerId",
+  requireAuth,
+  requireRole("supportAgent"),
+  async (req, res) => {
+    try {
+      const { customerId } = req.params;
+
+      // Guest users: return minimal structure
+      if (!isObjectId(customerId)) {
+        return res.json({
+          user: { name: "Guest User" },
+          orders: [],
+          favorites: [],
+        });
+      }
+
+      const user = await User.findById(customerId).select("-passwordHash -password").lean();
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const orders = await Order.find({ user: customerId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean();
+
+      const favoritesDoc = await Favorite.findOne({ userId: customerId })
+        .populate("items.productId", "name imageUrl image price")
+        .lean();
+
+      const favorites = (favoritesDoc?.items || []).map((it) => ({
+        productId: it.productId?._id || it.productId,
+        name: it.productId?.name || "Product",
+        imageUrl: it.productId?.imageUrl || it.productId?.image || "",
+        price: it.productId?.price ?? null,
+        createdAt: it.createdAt || null,
+      }));
+
+      return res.json({ user, orders: orders || [], favorites });
+    } catch (err) {
+      console.error("User details error:", err);
+      return res.status(500).json({ message: "Error fetching user details" });
+    }
+  }
+);
 
 /*
 General chat routes
 */
 
+/*
+Fetch chat by chatId (public for customer widget)
+GET /api/chats/:chatId
+*/
 router.get("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -152,6 +183,10 @@ router.get("/:chatId", async (req, res) => {
   }
 });
 
+/*
+Close chat and clear history (customer widget uses this)
+PUT /api/chats/:chatId/close
+*/
 router.put("/:chatId/close", async (req, res) => {
   try {
     const { chatId } = req.params;
