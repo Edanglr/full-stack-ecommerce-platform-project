@@ -18,27 +18,26 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
- * Invoice email
- * Supports BOTH:
- *  - pdfBuffer (preferred)
- *  - pdfPath (fallback, used by current orderRoutes)
+ * Invoice email sender (backward compatible)
+ * Supports:
+ *  - pdfBuffer (Buffer)  -> attachment content
+ *  - pdfPath (string)    -> attachment path
  */
 export async function sendInvoiceEmail({ to, name, orderId, pdfBuffer, pdfPath }) {
   try {
     if (!to) return;
 
-    const safeOrderId = orderId || "order";
-    const safeName = name || "Customer";
-
     const attachments = [];
+
+    // Prefer buffer if present
     if (pdfBuffer) {
       attachments.push({
-        filename: `invoice-${safeOrderId}.pdf`,
+        filename: `invoice-${orderId}.pdf`,
         content: pdfBuffer,
       });
     } else if (pdfPath) {
       attachments.push({
-        filename: `invoice-${safeOrderId}.pdf`,
+        filename: `invoice-${orderId}.pdf`,
         path: pdfPath,
       });
     }
@@ -47,7 +46,7 @@ export async function sendInvoiceEmail({ to, name, orderId, pdfBuffer, pdfPath }
       from: SMTP_FROM || SMTP_USER,
       to,
       subject: "Your Invoice",
-      text: `Hi ${safeName},\n\nYour invoice for order ${safeOrderId} is attached.\n\nLa Strada`,
+      text: `Hi ${name || "Customer"},\n\nYour invoice for order ${orderId} is attached.\n\nLa Strada`,
       attachments,
     };
 
