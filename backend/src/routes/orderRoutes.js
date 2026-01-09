@@ -126,16 +126,13 @@ router.post("/", requireAuth, async (req, res) => {
       )
     );
 
-    const discountTotalAtPurchase = round2(
-      Math.max(0, subtotalAtPurchase - totalAtPurchase)
-    );
+    const discountTotalAtPurchase = round2(Math.max(0, subtotalAtPurchase - totalAtPurchase));
 
     const profitRaw = normalizedItems.reduce((sum, it) => {
       if (it.unitCostAtPurchase == null) return sum;
       return (
         sum +
-        (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) *
-          it.quantity
+        (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) * it.quantity
       );
     }, 0);
 
@@ -245,11 +242,57 @@ router.get("/my", requireAuth, async (req, res) => {
       })),
     }));
 
-    res.json(formatted);
+    return res.json(formatted);
   } catch (err) {
-    res.status(500).json({ message: "Order fetch error." });
+    return res.status(500).json({ message: "Order fetch error." });
   }
 });
+
+/*
+2b) Support/Admin: Fetch orders by user
+GET /api/orders/by-user/:userId
+*/
+router.get(
+  "/by-user/:userId",
+  requireAuth,
+  requireRole("supportAgent", "productManager", "salesManager", "manager"),
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      const orders = await Order.find({ user: userId })
+        .populate({ path: "items.productId", select: "name imageUrl image price" })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const formatted = (orders || []).map((order) => ({
+        _id: order._id,
+        orderCode: order._id.toString().slice(-6).toUpperCase(),
+        trackingCode: order.trackingCode || "N/A",
+        status: order.shippingStatus || "Processing",
+        totalPrice: order.totalAtPurchase ?? order.totalAmount,
+        createdAt: order.createdAt,
+        items: (order.items || []).map((i) => ({
+          name: i.productId?.name || i.name || "Product",
+          productId: i.productId?._id || i.productId,
+          imageUrl:
+            i.productId?.imageUrl ||
+            i.productId?.image ||
+            i.imageUrl ||
+            "https://via.placeholder.com/80?text=No+Image",
+          price: i.unitPriceAtPurchase ?? i.price,
+          quantity: i.quantity,
+          size: i.size,
+        })),
+      }));
+
+      return res.json(formatted);
+    } catch (err) {
+      console.error("ORDERS BY USER ERROR:", err);
+      return res.status(500).json({ message: "Error fetching orders for user." });
+    }
+  }
+);
 
 /*
 Invoice info (JSON)
@@ -311,9 +354,7 @@ router.get("/:id/invoice/pdf", requireAuth, async (req, res) => {
     const invoicesDir = path.resolve(process.cwd(), "invoices");
 
     const rawPath = order.invoicePdfPath;
-    const candidatePath = path.isAbsolute(rawPath)
-      ? rawPath
-      : path.join(process.cwd(), rawPath);
+    const candidatePath = path.isAbsolute(rawPath) ? rawPath : path.join(process.cwd(), rawPath);
     const resolvedPath = path.resolve(candidatePath);
 
     if (!resolvedPath.startsWith(invoicesDir)) {
@@ -392,9 +433,7 @@ router.post(
       if (!order) return res.status(404).json({ message: "Order not found." });
 
       const itemIndex = order.items.findIndex((it) => {
-        const itemProdId = it.productId._id
-          ? it.productId._id.toString()
-          : it.productId.toString();
+        const itemProdId = it.productId._id ? it.productId._id.toString() : it.productId.toString();
         const targetSize = size === "-" ? "" : size || "";
         const itemSize = it.size === "-" ? "" : it.size || "";
         return itemProdId === productId.toString() && itemSize === targetSize;
@@ -409,21 +448,14 @@ router.post(
       });
 
       const unit = Number(cancelledItem.unitPriceAtPurchase ?? cancelledItem.price) || 0;
-      const list =
-        Number(cancelledItem.unitListPriceAtPurchase ?? cancelledItem.price) || 0;
+      const list = Number(cancelledItem.unitListPriceAtPurchase ?? cancelledItem.price) || 0;
       const qty = Number(cancelledItem.quantity) || 0;
 
-      order.totalAmount = Math.max(
-        0,
-        (order.totalAtPurchase ?? order.totalAmount ?? 0) - unit * qty
-      );
+      order.totalAmount = Math.max(0, (order.totalAtPurchase ?? order.totalAmount ?? 0) - unit * qty);
       order.totalAtPurchase = order.totalAmount;
 
       if (order.subtotalAtPurchase != null) {
-        order.subtotalAtPurchase = Math.max(
-          0,
-          Number(order.subtotalAtPurchase) - list * qty
-        );
+        order.subtotalAtPurchase = Math.max(0, Number(order.subtotalAtPurchase) - list * qty);
         order.discountTotalAtPurchase = Math.max(
           0,
           Number(order.subtotalAtPurchase) - Number(order.totalAtPurchase)
@@ -441,9 +473,9 @@ router.post(
       order.isCompleted = false;
 
       await order.save();
-      res.json({ message: "Item successfully cancelled.", order });
+      return res.json({ message: "Item successfully cancelled.", order });
     } catch (err) {
-      res.status(500).json({ message: "Internal server error." });
+      return res.status(500).json({ message: "Internal server error." });
     }
   }
 );
