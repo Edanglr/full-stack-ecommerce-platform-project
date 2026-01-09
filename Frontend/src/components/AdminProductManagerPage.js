@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+// Frontend/src/components/AdminProductManagerPage.js
+import React, { useEffect, useMemo, useState } from "react";
 
 function AdminProductManagerPage() {
   const [products, setProducts] = useState([]);
@@ -25,6 +26,11 @@ function AdminProductManagerPage() {
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
+  // ✅ NEW: Categories management (Step 5.2)
+  const [categories, setCategories] = useState([]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [addingCategory, setAddingCategory] = useState(false);
+
   const fetchProducts = async () => {
     try {
       setLoading(true);
@@ -45,9 +51,84 @@ function AdminProductManagerPage() {
     }
   };
 
+  // ✅ NEW
+  const fetchCategories = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5050/api/categories", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to fetch categories");
+      setCategories(Array.isArray(data.categories) ? data.categories : []);
+    } catch (err) {
+      // kategori gelmese bile panel çalışsın (demo kırmasın)
+      console.error("Fetch categories error:", err);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
+    fetchCategories();
   }, []);
+
+  const existingCategoryList = useMemo(() => {
+    const fromProducts = (products || []).map((p) => p?.category).filter(Boolean);
+    const merged = [...(categories || []), ...fromProducts]
+      .map((x) => String(x).trim())
+      .filter(Boolean);
+
+    // unique (case-insensitive)
+    const seen = new Set();
+    const out = [];
+    for (const c of merged) {
+      const key = c.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(c);
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }, [categories, products]);
+
+  const handleAddCategory = async (e) => {
+    e.preventDefault();
+    const name = String(newCategoryName || "").trim();
+    if (!name) return;
+
+    try {
+      setAddingCategory(true);
+      setError("");
+      setSuccessMsg("");
+
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5050/api/categories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || "Error creating category");
+        return;
+      }
+
+      setSuccessMsg(`Category added: ${data.category?.name || name}`);
+      setNewCategoryName("");
+      await fetchCategories();
+      setTimeout(() => setSuccessMsg(""), 2500);
+    } catch (err) {
+      console.error("Add category error:", err);
+      setError(err.message || "Error creating category");
+    } finally {
+      setAddingCategory(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -121,6 +202,7 @@ function AdminProductManagerPage() {
       });
 
       await fetchProducts();
+      await fetchCategories();
       setTimeout(() => setSuccessMsg(""), 3000);
     } catch (err) {
       console.error("Create product error:", err);
@@ -149,6 +231,7 @@ function AdminProductManagerPage() {
       }
 
       await fetchProducts();
+      await fetchCategories();
     } catch (err) {
       console.error("Delete product error:", err);
       alert("Unexpected error while deleting product.");
@@ -204,6 +287,87 @@ function AdminProductManagerPage() {
         </div>
       )}
 
+      {/* ✅ NEW: Category management */}
+      <div
+        style={{
+          maxWidth: 900,
+          border: "1px solid #e5e5e5",
+          borderRadius: 10,
+          padding: 16,
+          background: "white",
+          marginBottom: 22,
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>Category Management</h3>
+        <p style={{ marginTop: 6, color: "#666" }}>
+          Existing categories (from DB + existing products):
+        </p>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            padding: 10,
+            border: "1px solid #f0f0f0",
+            borderRadius: 8,
+            background: "#fafafa",
+          }}
+        >
+          {existingCategoryList.length === 0 ? (
+            <span style={{ opacity: 0.75 }}>No categories found.</span>
+          ) : (
+            existingCategoryList.map((c) => (
+              <span
+                key={c}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid #ddd",
+                  background: "white",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {c}
+              </span>
+            ))
+          )}
+        </div>
+
+        <form onSubmit={handleAddCategory} style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center" }}>
+          <input
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            placeholder="New category name (e.g., Jackets)"
+            disabled={addingCategory}
+            style={{
+              flex: 1,
+              minWidth: 240,
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid #ccc",
+            }}
+          />
+          <button
+            type="submit"
+            disabled={addingCategory || !String(newCategoryName || "").trim()}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              border: "none",
+              background: addingCategory ? "#ccc" : "#111",
+              color: "white",
+              fontWeight: 800,
+              cursor: addingCategory ? "not-allowed" : "pointer",
+              minWidth: 140,
+            }}
+          >
+            {addingCategory ? "Adding..." : "Add Category"}
+          </button>
+        </form>
+      </div>
+
       <h3>Add New Product</h3>
 
       <form onSubmit={handleCreateProduct} style={{ marginBottom: 30, maxWidth: 700 }}>
@@ -249,8 +413,17 @@ function AdminProductManagerPage() {
             onChange={handleChange}
             required
             disabled={saving}
+            list="categorySuggestions"
             style={{ width: "100%" }}
           />
+          <datalist id="categorySuggestions">
+            {existingCategoryList.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <div style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
+            Tip: choose from existing categories or type a new one.
+          </div>
         </Field>
 
         <Field label="Image URL">
