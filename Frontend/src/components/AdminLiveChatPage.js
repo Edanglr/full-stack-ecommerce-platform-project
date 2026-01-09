@@ -40,7 +40,6 @@ function AdminLiveChatPage({ user }) {
 
   useEffect(() => {
     fetchChats();
-    // Optional refresh: you can add polling if you want, but not required for demo.
   }, []);
 
   const { unclaimedChats, myChats, otherClaimedChats } = useMemo(() => {
@@ -51,8 +50,6 @@ function AdminLiveChatPage({ user }) {
     const mine = active.filter((c) => c.claimedBy && c.claimedBy === supportAgentId);
     const others = active.filter((c) => c.claimedBy && c.claimedBy !== supportAgentId);
 
-    // Keep closed chats visible under "My Chats" only if it was claimed by me (optional),
-    // otherwise it is not needed for the demo.
     const minePlusClosed = [
       ...mine,
       ...closed.filter((c) => c.claimedBy && c.claimedBy === supportAgentId),
@@ -75,10 +72,14 @@ function AdminLiveChatPage({ user }) {
     try {
       setClaimingChatId(chat.chatId);
 
-      const res = await fetch(`http://localhost:5050/api/chats/${chat.chatId}/claim`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // FIX: backend route is PUT /api/chats/admin/:chatId/claim
+      const res = await fetch(
+        `http://localhost:5050/api/chats/admin/${chat.chatId}/claim`,
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
 
       const data = await res.json().catch(() => ({}));
 
@@ -100,7 +101,7 @@ function AdminLiveChatPage({ user }) {
   const canOpenChat = (chat) => {
     if (!chat) return false;
     if (chat.status === "closed") return true;
-    if (!chat.claimedBy) return false; // must claim before opening for the demo
+    if (!chat.claimedBy) return false;
     if (chat.claimedBy !== supportAgentId) return false;
     return true;
   };
@@ -108,7 +109,6 @@ function AdminLiveChatPage({ user }) {
   useEffect(() => {
     if (!selectedChat?.id) return;
 
-    // If guest, do not fetch user/orders/favorites
     if (!isObjectId(selectedChat.id)) {
       setCustomerDetails({ user: { name: "Guest User" }, orders: [], favorites: [] });
       setLoadingDetails(false);
@@ -246,9 +246,7 @@ function AdminLiveChatPage({ user }) {
           canOpenChat(selectedChat) ? (
             <>
               {selectedChat.status === "closed" && (
-                <div style={styles.closedBanner}>
-                  This chat has been ended by the customer.
-                </div>
+                <div style={styles.closedBanner}>This chat has been ended by the customer.</div>
               )}
 
               <SupportChat
@@ -259,9 +257,7 @@ function AdminLiveChatPage({ user }) {
               />
             </>
           ) : (
-            <div style={styles.emptyState}>
-              Please claim this conversation before opening it.
-            </div>
+            <div style={styles.emptyState}>Please claim this conversation before opening it.</div>
           )
         ) : (
           <div style={styles.emptyState}>Select a chat to view messages.</div>
@@ -325,7 +321,9 @@ function AdminLiveChatPage({ user }) {
               customerDetails.orders.map((o) => (
                 <div key={o._id} style={styles.orderCard}>
                   <div style={styles.orderHeader}>
-                    <span style={styles.orderId}>Order: {String(o._id).slice(-6).toUpperCase()}</span>
+                    <span style={styles.orderId}>
+                      Order: {String(o._id).slice(-6).toUpperCase()}
+                    </span>
                     <span
                       style={{
                         ...styles.statusTag,
