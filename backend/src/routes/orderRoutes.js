@@ -183,8 +183,15 @@ router.post("/", requireAuth, async (req, res) => {
         newOrder.invoicePdfPath = pdfPath;
         await newOrder.save();
 
-        // ✅ FIXED: sendInvoiceEmail supports pdfPath now, and we pass name/orderId
-        if (user.email) await sendInvoiceEmail({ to: user.email, name: user.name, orderId: newOrder._id, pdfPath });
+        // ✅ FIX: pass correct params and pdfPath attachment support (email.js should handle pdfPath)
+        if (user?.email) {
+          await sendInvoiceEmail({
+            to: user.email,
+            name: user.name,
+            orderId: String(newOrder._id),
+            pdfPath,
+          });
+        }
       } catch (invoiceErr) {
         console.error("INVOICE ERROR:", invoiceErr);
       }
