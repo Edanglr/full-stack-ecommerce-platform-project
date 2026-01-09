@@ -72,7 +72,7 @@ function AdminLiveChatPage({ user }) {
     try {
       setClaimingChatId(chat.chatId);
 
-      // FIX: backend route is PUT /api/chats/admin/:chatId/claim
+      // Backend route: PUT /api/chats/admin/:chatId/claim
       const res = await fetch(
         `http://localhost:5050/api/chats/admin/${chat.chatId}/claim`,
         {
@@ -144,7 +144,7 @@ function AdminLiveChatPage({ user }) {
     };
 
     fetchDetails();
-  }, [selectedChat]);
+  }, [selectedChat, token]);
 
   return (
     <div style={styles.container}>
