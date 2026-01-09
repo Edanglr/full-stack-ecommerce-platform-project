@@ -24,13 +24,9 @@ export function generateInvoicePdf({ order, user }) {
     try {
       const baseId = (order._id || "").toString();
       const shortId = baseId.slice(-6);
-      const datePart = new Date()
-        .toISOString()
-        .slice(0, 10)
-        .replace(/-/g, "");
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
 
-      const invoiceNumber =
-        order.invoiceNumber || `INV-${datePart}-${shortId || "000000"}`;
+      const invoiceNumber = order.invoiceNumber || `INV-${datePart}-${shortId || "000000"}`;
 
       const pdfPath = path.join(INVOICE_DIR, `invoice-${baseId}.pdf`);
 
@@ -56,14 +52,10 @@ export function generateInvoicePdf({ order, user }) {
       doc.fontSize(12);
       doc.text(`Invoice No: ${invoiceNumber}`);
       doc.text(`Order ID: ${baseId}`);
-      if (order.trackingCode) {
-        doc.text(`Tracking Code: ${order.trackingCode}`);
-      }
-      const created = order.createdAt
-        ? new Date(order.createdAt)
-        : new Date();
-      doc.text(`Date: ${created.toLocaleString()}`);
+      if (order.trackingCode) doc.text(`Tracking Code: ${order.trackingCode}`);
 
+      const created = order.createdAt ? new Date(order.createdAt) : new Date();
+      doc.text(`Date: ${created.toLocaleString()}`);
       doc.moveDown();
 
       // ====== BILLING INFO ======
@@ -75,13 +67,10 @@ export function generateInvoicePdf({ order, user }) {
       doc.text("Bill To:");
       doc.text(fullName);
 
-      const addr =
-        user?.address || user?.shippingAddress || order.deliveryAddress || "";
+      const addr = user?.address || user?.shippingAddress || order.deliveryAddress || "";
       if (addr) doc.text(addr);
 
-      const cityLine = [user?.city, user?.postalCode || user?.zip]
-        .filter(Boolean)
-        .join(" ");
+      const cityLine = [user?.city, user?.postalCode || user?.zip].filter(Boolean).join(" ");
       if (cityLine) doc.text(cityLine);
 
       doc.moveDown();
@@ -105,10 +94,7 @@ export function generateInvoicePdf({ order, user }) {
         doc.text("Product", productX, tableTop);
         doc.text("Qty", qtyX, tableTop, { width: 40, align: "right" });
         doc.text("Price", priceX, tableTop, { width: 60, align: "right" });
-        doc.text("Line Total", totalX, tableTop, {
-          width: 80,
-          align: "right",
-        });
+        doc.text("Line Total", totalX, tableTop, { width: 80, align: "right" });
 
         doc.moveDown();
         doc.font("Helvetica");
@@ -116,40 +102,20 @@ export function generateInvoicePdf({ order, user }) {
         let position = tableTop + 20;
 
         items.forEach((item) => {
-          const qty = item.quantity || 0;
-          const price = item.price || 0;
+          const qty = Number(item.quantity || 0);
+          const price = Number(item.unitPriceAtPurchase ?? item.price ?? 0);
           const lineTotal = qty * price;
 
-          doc.text(
-            item.name || item.productName || "Product",
-            productX,
-            position,
-            { width: 230 }
-          );
-          doc.text(String(qty), qtyX, position, {
-            width: 40,
-            align: "right",
-          });
-          doc.text(
-            price.toFixed ? price.toFixed(2) : price,
-            priceX,
-            position,
-            { width: 60, align: "right" }
-          );
-          doc.text(
-            lineTotal.toFixed(2),
-            totalX,
-            position,
-            { width: 80, align: "right" }
-          );
+          doc.text(item.name || item.productName || "Product", productX, position, { width: 230 });
+          doc.text(String(qty), qtyX, position, { width: 40, align: "right" });
+          doc.text(price.toFixed(2), priceX, position, { width: 60, align: "right" });
+          doc.text(lineTotal.toFixed(2), totalX, position, { width: 80, align: "right" });
 
           position += 18;
         });
 
         // Üst çizgi
-        doc.moveTo(productX, tableTop - 5)
-          .lineTo(550, tableTop - 5)
-          .stroke();
+        doc.moveTo(productX, tableTop - 5).lineTo(550, tableTop - 5).stroke();
       }
 
       doc.moveDown();
@@ -157,12 +123,14 @@ export function generateInvoicePdf({ order, user }) {
 
       // ====== TOTAL ======
       const totalAmount =
-        typeof order.totalAmount === "number" ? order.totalAmount : 0;
+        typeof order.totalAtPurchase === "number"
+          ? order.totalAtPurchase
+          : typeof order.totalAmount === "number"
+          ? order.totalAmount
+          : 0;
 
       doc.font("Helvetica-Bold");
-      doc.text(`Total: ${totalAmount.toFixed(2)} TL`, {
-        align: "right",
-      });
+      doc.text(`Total: ${Number(totalAmount || 0).toFixed(2)} TL`, { align: "right" });
 
       doc.end();
     } catch (err) {
