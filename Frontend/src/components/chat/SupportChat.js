@@ -1,9 +1,11 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useChatSocket } from "../../hooks/useChatSocket";
 
 function SupportChat({ supportUser, chatId, customerName, isChatClosed }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Fetch previous messages
   useEffect(() => {
@@ -35,18 +37,65 @@ function SupportChat({ supportUser, chatId, customerName, isChatClosed }) {
     onMessage: handleNewMessage,
   });
 
+  const senderId = supportUser?._id || supportUser?.id;
+  const senderName = supportUser?.name || "Support";
+
   const handleSend = () => {
-    if (!text.trim() || isChatClosed) return;
+    if (!text.trim() || isChatClosed || isUploading) return;
 
     sendMessage({
       chatId,
-      senderId: supportUser._id || supportUser.id,
+      senderId,
       senderRole: "support",
-      senderName: supportUser.name || "Support",
+      senderName,
       text,
     });
 
     setText("");
+  };
+
+  const handlePickFile = () => {
+    if (isChatClosed || isUploading) return;
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !chatId || !senderId) return;
+
+    const token = localStorage.getItem("token");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      setIsUploading(true);
+
+      const res = await fetch("http://localhost:5050/api/chats/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+
+      sendMessage({
+        chatId,
+        senderId,
+        senderRole: "support",
+        senderName,
+        text: `Sent a file: ${data.fileName}`,
+        fileUrl: data.fileUrl,
+      });
+    } catch (err) {
+      console.error("Support upload error:", err);
+      alert("Failed to upload file.");
+    } finally {
+      setIsUploading(false);
+      e.target.value = "";
+    }
   };
 
   return (
@@ -100,19 +149,46 @@ function SupportChat({ supportUser, chatId, customerName, isChatClosed }) {
       </div>
 
       <div style={styles.inputRow}>
+        <button
+          type="button"
+          onClick={handlePickFile}
+          disabled={isChatClosed || isUploading}
+          style={{
+            ...styles.attachButton,
+            opacity: isChatClosed || isUploading ? 0.6 : 1,
+            cursor: isChatClosed || isUploading ? "not-allowed" : "pointer",
+          }}
+          title={isChatClosed ? "Chat is closed" : "Attach a file"}
+        >
+          Attach
+        </button>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          style={{ display: "none" }}
+          onChange={handleFileChange}
+          disabled={isChatClosed || isUploading}
+        />
+
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={isChatClosed ? "Chat closed." : "Reply..."}
+          placeholder={isChatClosed ? "Chat closed." : isUploading ? "Uploading..." : "Reply..."}
           style={{
             ...styles.input,
             backgroundColor: isChatClosed ? "#eee" : "#fff",
           }}
-          disabled={isChatClosed}
+          disabled={isChatClosed || isUploading}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
-        <button onClick={handleSend} style={styles.sendButton} disabled={isChatClosed}>
-          Send
+
+        <button
+          onClick={handleSend}
+          style={styles.sendButton}
+          disabled={isChatClosed || isUploading}
+        >
+          {isUploading ? "..." : "Send"}
         </button>
       </div>
     </div>
@@ -168,6 +244,15 @@ const styles = {
     gap: 8,
     paddingTop: 10,
     borderTop: "1px solid #eee",
+    alignItems: "center",
+  },
+  attachButton: {
+    padding: "0 12px",
+    height: 40,
+    borderRadius: 8,
+    border: "1px solid #ddd",
+    backgroundColor: "#f8f9fa",
+    fontWeight: "bold",
   },
   input: {
     flex: 1,
@@ -184,6 +269,7 @@ const styles = {
     borderRadius: 8,
     cursor: "pointer",
     fontWeight: "bold",
+    height: 40,
   },
   imagePreview: {
     maxWidth: "100%",
