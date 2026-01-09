@@ -19,7 +19,6 @@ import returnRoutes from "./src/routes/returnRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
 import chatSocket from "./src/socket/chatSocket.js";
 
-// Sales manager routes should expose discount campaign endpoints.
 import salesManagerRoutes from "./src/routes/salesManagerRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -57,7 +56,6 @@ app.use("/api/favorites", favoriteRoutes);
 app.use("/api/returns", returnRoutes);
 app.use("/api/chats", chatRoutes);
 
-// Sales manager: discounts, analytics, invoice ranges.
 app.use("/api/sales", salesManagerRoutes);
 
 const io = new Server(server, {
@@ -72,14 +70,14 @@ chatSocket(io);
 const start = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
-    console.log("✓ Connected to MongoDB");
+    console.log("Connected to MongoDB");
 
     server.listen(PORT, () => {
-      console.log(`✓ Backend running on http://localhost:${PORT}`);
-      console.log(`✓ CORS origin: ${ORIGIN}`);
+      console.log(`Backend running on http://localhost:${PORT}`);
+      console.log(`CORS origin: ${ORIGIN}`);
     });
   } catch (err) {
-    console.error("✗ MongoDB connection error:", err.message);
+    console.error("MongoDB connection error:", err.message);
     process.exit(1);
   }
 };
