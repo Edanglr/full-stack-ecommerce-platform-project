@@ -1,35 +1,73 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useChatSocket } from "../../hooks/useChatSocket";
 
 function SupportChat({ supportUser, chatId, customerName, isChatClosed }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch previous messages
+  /* ============================================================
+     1️⃣ Mesaj Geçmişini Çekme - HER ZAMAN TÜM MESAJLARI GETİR
+     ============================================================ */
   useEffect(() => {
     if (!chatId) return;
+    
     const token = localStorage.getItem("token");
-
+    setIsLoading(true);
+    
     const fetchMessages = async () => {
       try {
+        console.log("🔄 [Support] Fetching messages for:", chatId);
+        
         const res = await fetch(`http://localhost:5050/api/chats/${chatId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        
         const data = await res.json();
-        const msgList = data.messages || (Array.isArray(data) ? data : []);
+        
+        // ✅ KRİTİK: Backend'den gelen tüm mesajları al
+        const msgList = data.messages || [];
+        
+        console.log(`📨 [Support] Fetched ${msgList.length} messages for ${chatId}`);
         setMessages(msgList);
+        
       } catch (err) {
-        console.error("fetchMessages error:", err);
+        console.error("❌ [Support] fetchMessages error:", err);
+        setMessages([]);
+      } finally {
+        setIsLoading(false);
       }
     };
-
+    
     fetchMessages();
   }, [chatId]);
 
+  /* ============================================================
+     2️⃣ Socket Üzerinden Anlık Mesaj Dinleme
+     ============================================================ */
   const handleNewMessage = useCallback((msg) => {
-    setMessages((prev) => [...prev, msg]);
+    console.log("📩 [Support] New message received:", msg);
+    
+    setMessages((prev) => {
+      // Mükerrer kaydı önlemek için kontrol
+      const isDuplicate = prev.some(
+        m => m.timestamp === msg.timestamp && 
+             m.text === msg.text &&
+             m.senderId === msg.senderId
+      );
+      
+      if (isDuplicate) {
+        console.log("⚠️ [Support] Duplicate message, skipping");
+        return prev;
+      }
+      
+      console.log("✅ [Support] Adding new message");
+      return [...prev, msg];
+    });
   }, []);
 
   const { sendMessage } = useChatSocket({
@@ -37,158 +75,121 @@ function SupportChat({ supportUser, chatId, customerName, isChatClosed }) {
     onMessage: handleNewMessage,
   });
 
-  const senderId = supportUser?._id || supportUser?.id;
-  const senderName = supportUser?.name || "Support";
-
+  /* ============================================================
+     3️⃣ Mesaj Gönderme
+     ============================================================ */
   const handleSend = () => {
-    if (!text.trim() || isChatClosed || isUploading) return;
-
+    if (!text.trim() || isChatClosed) return;
+    
+    console.log("📤 [Support] Sending message:", text);
+    
     sendMessage({
       chatId,
-      senderId,
+      senderId: supportUser._id || supportUser.id,
       senderRole: "support",
-      senderName,
+      senderName: supportUser.name || "Support",
       text,
     });
-
     setText("");
-  };
-
-  const handlePickFile = () => {
-    if (isChatClosed || isUploading) return;
-    if (fileInputRef.current) fileInputRef.current.click();
-  };
-
-  const handleFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !chatId || !senderId) return;
-
-    const token = localStorage.getItem("token");
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      setIsUploading(true);
-
-      const res = await fetch("http://localhost:5050/api/chats/upload", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-
-      sendMessage({
-        chatId,
-        senderId,
-        senderRole: "support",
-        senderName,
-        text: `Sent a file: ${data.fileName}`,
-        fileUrl: data.fileUrl,
-      });
-    } catch (err) {
-      console.error("Support upload error:", err);
-      alert("Failed to upload file.");
-    } finally {
-      setIsUploading(false);
-      e.target.value = "";
-    }
   };
 
   return (
     <div style={styles.container}>
-      <h3 style={{ margin: "0 0 10px 0" }}>Live Support</h3>
-
-      {customerName && (
-        <div style={styles.customerInfo}>
-          Chatting with: <b>{customerName}</b>{" "}
-          {isChatClosed && <span style={{ color: "red" }}>(Closed)</span>}
-        </div>
-      )}
-
-      <div style={styles.messages}>
-        {messages.map((m, i) => {
-          const isImage = m.fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(m.fileUrl);
-
-          return (
-            <div
-              key={i}
-              style={{
-                ...styles.message,
-                alignSelf: m.senderRole === "support" ? "flex-end" : "flex-start",
-                background: m.senderRole === "support" ? "#d1ecf1" : "#f1f1f1",
-              }}
-            >
-              <div style={styles.senderLabel}>
-                {m.senderRole === "support"
-                  ? m.senderName || "Support"
-                  : m.senderName || "Customer"}
-              </div>
-
-              <div>{m.text}</div>
-
-              {m.fileUrl && (
-                <div style={styles.attachmentBox}>
-                  {isImage ? (
-                    <a href={m.fileUrl} target="_blank" rel="noreferrer">
-                      <img src={m.fileUrl} alt="attachment" style={styles.imagePreview} />
-                    </a>
-                  ) : (
-                    <a href={m.fileUrl} target="_blank" rel="noreferrer" style={styles.fileLink}>
-                      Open Attachment
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div style={styles.headerSection}>
+        <h3 style={{ margin: 0, fontSize: 18 }}>Live Support</h3>
+        
+        {customerName && (
+          <div style={styles.customerInfo}>
+            Chatting with: <b>{customerName}</b> 
+            {isChatClosed && (
+              <span style={{color:'#d9534f', marginLeft: '10px', fontWeight: 'bold', fontSize: 12}}>
+                (Chat Ended - History Preserved)
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Mesaj Listesi */}
+      <div style={styles.messages}>
+        {isLoading ? (
+          <div style={{ textAlign: 'center', color: '#aaa', marginTop: '30px' }}>
+            <div style={styles.spinner}></div>
+            <p style={{marginTop: 10, fontSize: 14}}>Loading messages...</p>
+          </div>
+        ) : messages.length === 0 ? (
+          <div style={{ textAlign: 'center', color: '#aaa', marginTop: '30px' }}>
+            <div style={{fontSize: 40, marginBottom: 10}}>💬</div>
+            <p style={{fontSize: 14}}>No messages yet.</p>
+            <p style={{fontSize: 12, color: '#ccc'}}>Start the conversation!</p>
+          </div>
+        ) : (
+          messages.map((m, i) => {
+            const isImage = m.fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(m.fileUrl);
+            const isFromSupport = m.senderRole === "support";
+
+            return (
+              <div key={`${m.timestamp}-${i}`} style={{
+                ...styles.message,
+                alignSelf: isFromSupport ? "flex-end" : "flex-start",
+                background: isFromSupport ? "#d1ecf1" : "#f1f1f1",
+              }}>
+                <div style={styles.senderLabel}>
+                  {isFromSupport ? (m.senderName || "Support") : (m.senderName || "Customer")}
+                </div>
+                <div style={{ wordBreak: 'break-word' }}>{m.text}</div>
+                
+                {m.fileUrl && (
+                  <div style={styles.attachmentArea}>
+                    {isImage ? (
+                      <a href={m.fileUrl} target="_blank" rel="noreferrer">
+                        <img src={m.fileUrl} alt="attachment" style={styles.imagePreview} />
+                      </a>
+                    ) : (
+                      <a href={m.fileUrl} target="_blank" rel="noreferrer" style={styles.fileLink}>
+                        📎 View File
+                      </a>
+                    )}
+                  </div>
+                )}
+                
+                {/* Mesaj zamanını göster */}
+                <div style={styles.timestamp}>
+                  {new Date(m.timestamp).toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Girış Alanı */}
       <div style={styles.inputRow}>
-        <button
-          type="button"
-          onClick={handlePickFile}
-          disabled={isChatClosed || isUploading}
-          style={{
-            ...styles.attachButton,
-            opacity: isChatClosed || isUploading ? 0.6 : 1,
-            cursor: isChatClosed || isUploading ? "not-allowed" : "pointer",
-          }}
-          title={isChatClosed ? "Chat is closed" : "Attach a file"}
-        >
-          Attach
-        </button>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          style={{ display: "none" }}
-          onChange={handleFileChange}
-          disabled={isChatClosed || isUploading}
-        />
-
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={isChatClosed ? "Chat closed." : isUploading ? "Uploading..." : "Reply..."}
+          placeholder={isChatClosed ? "Chat is closed, cannot reply." : "Type your reply..."}
           style={{
-            ...styles.input,
-            backgroundColor: isChatClosed ? "#eee" : "#fff",
+            ...styles.input, 
+            backgroundColor: isChatClosed ? "#f8f9fa" : "#fff",
+            cursor: isChatClosed ? "not-allowed" : "text"
           }}
-          disabled={isChatClosed || isUploading}
+          disabled={isChatClosed}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
-
-        <button
+        <button 
           onClick={handleSend}
-          style={styles.sendButton}
-          disabled={isChatClosed || isUploading}
+          style={{
+            ...styles.sendButton, 
+            backgroundColor: isChatClosed ? "#ccc" : "#007bff",
+            cursor: isChatClosed ? "not-allowed" : "pointer"
+          }} 
+          disabled={isChatClosed}
         >
-          {isUploading ? "..." : "Send"}
+          Send
         </button>
       </div>
     </div>
@@ -196,94 +197,111 @@ function SupportChat({ supportUser, chatId, customerName, isChatClosed }) {
 }
 
 const styles = {
-  container: {
-    width: "100%",
-    height: "100%",
-    border: "1px solid #ccc",
-    borderRadius: 8,
-    padding: 15,
-    display: "flex",
-    flexDirection: "column",
+  container: { 
+    width: "100%", 
+    height: "100%", 
+    border: "1px solid #ccc", 
+    borderRadius: 8, 
+    padding: 0,
+    display: "flex", 
+    flexDirection: "column", 
     backgroundColor: "#fff",
+    overflow: "hidden"
   },
-  customerInfo: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 12,
-    paddingBottom: 8,
+  headerSection: {
+    padding: "15px",
     borderBottom: "1px solid #eee",
+    backgroundColor: "#f8f9fa"
   },
-  messages: {
-    flex: 1,
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    paddingRight: 5,
+  customerInfo: { 
+    fontSize: 13, 
+    color: "#666", 
+    marginTop: 8
   },
-  message: {
-    padding: "8px 12px",
-    borderRadius: 12,
-    maxWidth: "80%",
-    fontSize: "14px",
+  messages: { 
+    flex: 1, 
+    overflowY: "auto", 
+    display: "flex", 
+    flexDirection: "column", 
+    gap: 10, 
+    padding: 15,
+    backgroundColor: "#fff"
+  },
+  message: { 
+    padding: "10px 14px", 
+    borderRadius: 12, 
+    maxWidth: "75%", 
+    fontSize: "14px", 
     boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+    position: "relative"
   },
-  senderLabel: {
-    fontSize: "11px",
-    fontWeight: "bold",
-    marginBottom: "3px",
-    color: "#333",
+  senderLabel: { 
+    fontSize: "11px", 
+    fontWeight: "bold", 
+    marginBottom: "4px", 
+    color: "#333" 
   },
-  attachmentBox: {
-    marginTop: "8px",
-    borderTop: "1px solid rgba(0,0,0,0.05)",
-    paddingTop: "5px",
+  timestamp: {
+    fontSize: "10px",
+    color: "#999",
+    marginTop: "4px",
+    textAlign: "right"
   },
-  inputRow: {
-    display: "flex",
-    gap: 8,
-    paddingTop: 10,
+  attachmentArea: { 
+    marginTop: "8px", 
+    borderTop: "1px solid rgba(0,0,0,0.05)", 
+    paddingTop: "5px" 
+  },
+  inputRow: { 
+    display: "flex", 
+    gap: 8, 
+    padding: 12,
     borderTop: "1px solid #eee",
-    alignItems: "center",
+    backgroundColor: "#f8f9fa"
   },
-  attachButton: {
-    padding: "0 12px",
-    height: 40,
-    borderRadius: 8,
-    border: "1px solid #ddd",
-    backgroundColor: "#f8f9fa",
-    fontWeight: "bold",
-  },
-  input: {
-    flex: 1,
-    padding: "10px",
-    borderRadius: 8,
-    border: "1px solid #ddd",
+  input: { 
+    flex: 1, 
+    padding: "10px 14px", 
+    borderRadius: 8, 
+    border: "1px solid #ddd", 
     outline: "none",
+    fontSize: "14px"
   },
-  sendButton: {
-    padding: "0 20px",
-    backgroundColor: "#007bff",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
+  sendButton: { 
+    padding: "0 24px", 
+    color: "#fff", 
+    border: "none", 
+    borderRadius: 8, 
+    fontWeight: "600", 
+    transition: "0.2s",
+    fontSize: "14px",
+    cursor: "pointer"
+  },
+  imagePreview: { 
+    maxWidth: "100%", 
+    maxHeight: "150px", 
+    borderRadius: "4px", 
+    marginTop: "5px",
     cursor: "pointer",
-    fontWeight: "bold",
-    height: 40,
+    display: "block"
   },
-  imagePreview: {
-    maxWidth: "100%",
-    maxHeight: "150px",
-    borderRadius: "4px",
+  fileLink: { 
+    color: "#007bff", 
+    fontSize: "12px", 
+    fontWeight: "bold", 
+    display: "inline-block", 
     marginTop: "5px",
+    textDecoration: "none"
   },
-  fileLink: {
-    color: "#007bff",
-    fontSize: "12px",
-    fontWeight: "bold",
-    display: "inline-block",
-    marginTop: "5px",
-  },
+  spinner: {
+    border: "3px solid #f3f3f3",
+    borderTop: "3px solid #007bff",
+    borderRadius: "50%",
+    width: "30px",
+    height: "30px",
+    animation: "spin 1s linear infinite",
+    margin: "0 auto"
+  }
 };
 
 export default SupportChat;

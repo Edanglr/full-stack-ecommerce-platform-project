@@ -516,10 +516,51 @@ router.put("/:id/status", requireRole("productManager"), async (req, res) => {
   }
 });
 
-/*
-6) Tracking endpoint
-GET /api/orders/track/:trackingCode
-*/
+
+router.put("/:id/cancel", requireManager, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    
+    if (!order) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    // Sadece Processing durumundaki siparişler iptal edilebilir
+    if (order.shippingStatus !== "Processing") {
+      return res.status(400).json({ 
+        message: `Cannot cancel order with status: ${order.shippingStatus}` 
+      });
+    }
+
+    // Stokları geri yükle
+    for (const item of order.items) {
+      await Product.findByIdAndUpdate(item.productId, {
+        $inc: { [`sizes.${item.size}`]: item.quantity },
+      });
+    }
+
+    // Siparişi iptal et
+    order.shippingStatus = "Cancelled";
+    order.shippingHistory.push({ 
+      status: "Cancelled by support", 
+      date: new Date() 
+    });
+    order.isCompleted = true;
+
+    await order.save();
+
+    console.log(`✅ Order ${order._id} cancelled by ${req.user.name}`);
+
+    return res.json({
+      message: "Order cancelled successfully.",
+      order
+    });
+  } catch (err) {
+    console.error("CANCEL ORDER ERROR:", err);
+    res.status(500).json({ message: "Failed to cancel order." });
+  }
+});
+
 router.get("/track/:trackingCode", async (req, res) => {
   try {
     const order = await Order.findOne({ trackingCode: req.params.trackingCode });
