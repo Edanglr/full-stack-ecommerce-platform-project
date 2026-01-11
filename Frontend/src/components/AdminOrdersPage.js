@@ -45,7 +45,13 @@ function todayISO() {
   return d.toISOString().slice(0, 10);
 }
 
-function LineChart({ data, width = 920, height = 240, valueKey = "profit", title = "Profit Chart" }) {
+function LineChart({
+  data,
+  width = 920,
+  height = 240,
+  valueKey = "profit",
+  title = "Profit Chart",
+}) {
   const padding = 30;
   const W = width;
   const H = height;
@@ -61,7 +67,11 @@ function LineChart({ data, width = 920, height = 240, valueKey = "profit", title
 
   const scaleY = (v) => {
     if (maxV === minV) return H / 2;
-    return H - padding - ((v - minV) / (maxV - minV)) * (H - padding * 2);
+    return (
+      H -
+      padding -
+      ((v - minV) / (maxV - minV)) * (H - padding * 2)
+    );
   };
 
   const points = safe
@@ -72,22 +82,56 @@ function LineChart({ data, width = 920, height = 240, valueKey = "profit", title
     })
     .join(" ");
 
-  const labelIdx = [0, Math.floor((safe.length - 1) / 2), safe.length - 1].filter(
-    (v, i, a) => a.indexOf(v) === i
-  );
+  const labelIdx = [
+    0,
+    Math.floor((safe.length - 1) / 2),
+    safe.length - 1,
+  ].filter((v, i, a) => a.indexOf(v) === i);
 
   return (
-    <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "white", marginBottom: 12 }}>
+    <div
+      style={{
+        border: "1px solid #eee",
+        borderRadius: 10,
+        padding: 12,
+        background: "white",
+        marginBottom: 12,
+      }}
+    >
       <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
 
-      <svg width={W} height={H} style={{ display: "block", width: "100%", overflow: "visible" }}>
-        <line x1={padding} y1={padding} x2={padding} y2={H - padding} stroke="black" strokeWidth="1" />
-        <line x1={padding} y1={H - padding} x2={W - padding} y2={H - padding} stroke="black" strokeWidth="1" />
+      <svg
+        width={W}
+        height={H}
+        style={{ display: "block", width: "100%", overflow: "visible" }}
+      >
+        <line
+          x1={padding}
+          y1={padding}
+          x2={padding}
+          y2={H - padding}
+          stroke="black"
+          strokeWidth="1"
+        />
+        <line
+          x1={padding}
+          y1={H - padding}
+          x2={W - padding}
+          y2={H - padding}
+          stroke="black"
+          strokeWidth="1"
+        />
 
         <polyline fill="none" stroke="black" strokeWidth="2" points={points} />
 
-        <text x={padding + 6} y={padding + 10} fontSize="12">{`max: ${maxV.toFixed(2)}`}</text>
-        <text x={padding + 6} y={H - padding - 6} fontSize="12">{`min: ${minV.toFixed(2)}`}</text>
+        <text x={padding + 6} y={padding + 10} fontSize="12">{`max: ${maxV.toFixed(
+          2
+        )}`}</text>
+        <text
+          x={padding + 6}
+          y={H - padding - 6}
+          fontSize="12"
+        >{`min: ${minV.toFixed(2)}`}</text>
 
         {labelIdx.map((i) => (
           <text
@@ -105,8 +149,8 @@ function LineChart({ data, width = 920, height = 240, valueKey = "profit", title
   );
 }
 
-export default function AdminOrdersPage() {
-  const [tab, setTab] = useState("invoices");
+export default function AdminOrdersPage({ initialTab = "invoices" }) {
+  const [tab, setTab] = useState(initialTab);
 
   const [from, setFrom] = useState("");
   const [to, setTo] = useState(todayISO());
@@ -185,6 +229,16 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     loadInvoices();
     loadProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Eğer /admin/analytics gibi bir route üzerinden bu sayfaya geldiysek,
+  // ilk açılışta analytics verisini de otomatik çek.
+  useEffect(() => {
+    if (initialTab === "analytics") {
+      loadAnalytics();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows = useMemo(() => {
