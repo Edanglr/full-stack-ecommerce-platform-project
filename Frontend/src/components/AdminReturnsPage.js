@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useState } from "react";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5050";
@@ -64,12 +65,16 @@ export default function AdminReturnsPage() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
 
-  const loadReturns = async () => {
+  const loadReturns = async (statusOverride) => {
     try {
       setErr("");
       setMsg("");
       setLoading(true);
-      const data = await apiFetch("/api/returns");
+
+      const st = statusOverride ?? statusFilter;
+      const qs = st && st !== "all" ? `?status=${encodeURIComponent(st)}` : "";
+      const data = await apiFetch(`/api/sales/returns${qs}`);
+
       setReturns(Array.isArray(data) ? data : []);
     } catch (e) {
       setReturns([]);
@@ -80,8 +85,14 @@ export default function AdminReturnsPage() {
   };
 
   useEffect(() => {
-    loadReturns();
+    loadReturns("all");
+    // eslint-disable-next-line
   }, []);
+
+  useEffect(() => {
+    loadReturns();
+    // eslint-disable-next-line
+  }, [statusFilter]);
 
   const filtered = useMemo(() => {
     const q = (search || "").trim().toLowerCase();
@@ -111,30 +122,32 @@ export default function AdminReturnsPage() {
     });
   }, [returns, statusFilter, search]);
 
-  const refreshAndSyncModal = async (returnIdToSync) => {
-    await loadReturns();
+  const syncActiveFromFreshList = async (returnIdToSync) => {
     if (!returnIdToSync) return;
-    const found = (returns || []).find((x) => String(x._id) === String(returnIdToSync));
+    const st = statusFilter && statusFilter !== "all" ? `?status=${encodeURIComponent(statusFilter)}` : "";
+    const fresh = await apiFetch(`/api/sales/returns${st}`);
+    const list = Array.isArray(fresh) ? fresh : [];
+    setReturns(list);
+    const found = list.find((x) => String(x._id) === String(returnIdToSync));
     if (found) setActive(found);
   };
 
-  const approveRefund = async (returnId) => {
+  const approveOnly = async (returnId) => {
     try {
       setErr("");
       setMsg("");
-      const ok = window.confirm("Approve this return? This calculates refund amount and emails the customer.");
+      const ok = window.confirm("Approve this return request? (This will NOT refund yet.)");
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/approve`, { method: "PATCH" });
+
+      const data = await apiFetch(`/api/sales/returns/${returnId}/approve`, {
+        method: "PATCH",
+        body: JSON.stringify({ refundNow: false, note: "Approved by sales manager" }),
+      });
 
       setMsg(data?.message || "Approved.");
-      await loadReturns();
-      if (open && active && String(active._id) === String(returnId)) {
-        const fresh = await apiFetch("/api/returns");
-        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
-        if (found) setActive(found);
-      }
+      await syncActiveFromFreshList(returnId);
     } catch (e) {
       setErr(e.message || "Approve failed");
     } finally {
@@ -151,18 +164,14 @@ export default function AdminReturnsPage() {
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/reject`, {
+
+      const data = await apiFetch(`/api/sales/returns/${returnId}/reject`, {
         method: "PATCH",
-        body: JSON.stringify({ reason: rejectReason || "" }),
+        body: JSON.stringify({ reason: rejectReason || "", note: rejectReason || "" }),
       });
 
       setMsg(data?.message || "Rejected.");
-      await loadReturns();
-      if (open && active && String(active._id) === String(returnId)) {
-        const fresh = await apiFetch("/api/returns");
-        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
-        if (found) setActive(found);
-      }
+      await syncActiveFromFreshList(returnId);
     } catch (e) {
       setErr(e.message || "Reject failed");
     } finally {
@@ -174,19 +183,18 @@ export default function AdminReturnsPage() {
     try {
       setErr("");
       setMsg("");
-      const ok = window.confirm("Mark as received? This means the item arrived to warehouse.");
+      const ok = window.confirm("Mark as received? (Item arrived to warehouse.)");
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/received`, { method: "PATCH" });
+
+      const data = await apiFetch(`/api/sales/returns/${returnId}/receive`, {
+        method: "PATCH",
+        body: JSON.stringify({ note: "Received at warehouse" }),
+      });
 
       setMsg(data?.message || "Marked as received.");
-      await loadReturns();
-      if (open && active && String(active._id) === String(returnId)) {
-        const fresh = await apiFetch("/api/returns");
-        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
-        if (found) setActive(found);
-      }
+      await syncActiveFromFreshList(returnId);
     } catch (e) {
       setErr(e.message || "Received update failed");
     } finally {
@@ -198,19 +206,33 @@ export default function AdminReturnsPage() {
     try {
       setErr("");
       setMsg("");
-      const ok = window.confirm("Mark as refunded? This means money transfer is done.");
+
+      const amountStr = window.prompt("Refund amount (TL). Leave empty to auto-calc from order item:", "");
+      let refundedAmount = undefined;
+      if (amountStr != null && String(amountStr).trim() !== "") {
+        const n = Number(amountStr);
+        if (!(n > 0)) {
+          alert("Invalid amount. Please enter a positive number.");
+          return;
+        }
+        refundedAmount = n;
+      }
+
+      const ok = window.confirm("Process refund now? (This also restores stock in backend.)");
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/refund`, { method: "PATCH" });
 
-      setMsg(data?.message || "Marked as refunded.");
-      await loadReturns();
-      if (open && active && String(active._id) === String(returnId)) {
-        const fresh = await apiFetch("/api/returns");
-        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
-        if (found) setActive(found);
-      }
+      const data = await apiFetch(`/api/sales/returns/${returnId}/refund`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          refundedAmount,
+          note: refundedAmount ? `Refunded ${refundedAmount} TL` : "Refunded (auto amount)",
+        }),
+      });
+
+      setMsg(data?.message || "Refunded.");
+      await syncActiveFromFreshList(returnId);
     } catch (e) {
       setErr(e.message || "Refund update failed");
     } finally {
@@ -226,15 +248,14 @@ export default function AdminReturnsPage() {
       if (!ok) return;
 
       setLoading(true);
-      const data = await apiFetch(`/api/returns/${returnId}/complete`, { method: "PATCH" });
+
+      const data = await apiFetch(`/api/sales/returns/${returnId}/complete`, {
+        method: "PATCH",
+        body: JSON.stringify({ note: "Completed" }),
+      });
 
       setMsg(data?.message || "Completed.");
-      await loadReturns();
-      if (open && active && String(active._id) === String(returnId)) {
-        const fresh = await apiFetch("/api/returns");
-        const found = (Array.isArray(fresh) ? fresh : []).find((x) => String(x._id) === String(returnId));
-        if (found) setActive(found);
-      }
+      await syncActiveFromFreshList(returnId);
     } catch (e) {
       setErr(e.message || "Complete failed");
     } finally {
@@ -247,7 +268,7 @@ export default function AdminReturnsPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <h2 style={{ margin: 0 }}>Return Requests (Sales Manager)</h2>
         <button
-          onClick={loadReturns}
+          onClick={() => loadReturns()}
           disabled={loading}
           style={{
             padding: "8px 12px",
@@ -347,7 +368,7 @@ export default function AdminReturnsPage() {
               const canApprove = st === "Requested";
               const canReject = st === "Requested";
               const canReceived = st === "Approved";
-              const canRefund = st === "Received";
+              const canRefund = st === "Received" || st === "Approved";
               const canComplete = st === "Refunded";
 
               return (
@@ -412,7 +433,7 @@ export default function AdminReturnsPage() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button
                         disabled={!canApprove || loading}
-                        onClick={() => approveRefund(r._id)}
+                        onClick={() => approveOnly(r._id)}
                         style={{
                           padding: "6px 10px",
                           borderRadius: 8,
@@ -471,7 +492,7 @@ export default function AdminReturnsPage() {
                           fontWeight: 700,
                         }}
                       >
-                        Refunded
+                        Refund
                       </button>
 
                       <button
@@ -565,7 +586,7 @@ export default function AdminReturnsPage() {
             <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button
                 disabled={String(active.status) !== "Requested" || loading}
-                onClick={() => approveRefund(active._id)}
+                onClick={() => approveOnly(active._id)}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 10,
@@ -610,7 +631,7 @@ export default function AdminReturnsPage() {
               </button>
 
               <button
-                disabled={String(active.status) !== "Received" || loading}
+                disabled={!(String(active.status) === "Received" || String(active.status) === "Approved") || loading}
                 onClick={() => markRefunded(active._id)}
                 style={{
                   padding: "8px 12px",
@@ -618,10 +639,10 @@ export default function AdminReturnsPage() {
                   border: "1px solid #ccc",
                   background: "white",
                   fontWeight: 800,
-                  cursor: String(active.status) === "Received" && !loading ? "pointer" : "not-allowed",
+                  cursor: !loading ? "pointer" : "not-allowed",
                 }}
               >
-                Refunded
+                Refund
               </button>
 
               <button
@@ -653,7 +674,8 @@ export default function AdminReturnsPage() {
                       .map((h, idx) => (
                         <div key={idx} style={{ fontSize: 13 }}>
                           <div style={{ fontWeight: 800 }}>
-                            {h.status} <span style={{ fontWeight: 500, opacity: 0.75 }}>{formatDateTime(h.at)}</span>
+                            {h.status}{" "}
+                            <span style={{ fontWeight: 500, opacity: 0.75 }}>{formatDateTime(h.at)}</span>
                           </div>
                           {h.note ? <div style={{ opacity: 0.85 }}>{h.note}</div> : null}
                         </div>
