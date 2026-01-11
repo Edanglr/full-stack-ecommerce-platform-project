@@ -1,5 +1,5 @@
-
-import React, { useEffect, useMemo, useState } from "react";
+// frontend/src/components/AdminReturnsPage.js
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5050";
 
@@ -65,13 +65,14 @@ export default function AdminReturnsPage() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
 
-  const loadReturns = async (statusOverride) => {
+  // NOTE: Sales manager returns endpoint (you were using /api/sales/returns)
+  const loadReturns = useCallback(async (statusToLoad) => {
     try {
       setErr("");
       setMsg("");
       setLoading(true);
 
-      const st = statusOverride ?? statusFilter;
+      const st = statusToLoad ?? "all";
       const qs = st && st !== "all" ? `?status=${encodeURIComponent(st)}` : "";
       const data = await apiFetch(`/api/sales/returns${qs}`);
 
@@ -82,24 +83,21 @@ export default function AdminReturnsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadReturns("all");
-    // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
-    loadReturns();
-    // eslint-disable-next-line
-  }, [statusFilter]);
+    loadReturns("all");
+  }, [loadReturns]);
+
+  useEffect(() => {
+    loadReturns(statusFilter);
+  }, [statusFilter, loadReturns]);
 
   const filtered = useMemo(() => {
     const q = (search || "").trim().toLowerCase();
 
     return (returns || []).filter((r) => {
       if (statusFilter !== "all" && String(r.status) !== String(statusFilter)) return false;
-
       if (!q) return true;
 
       const fields = [
@@ -122,28 +120,31 @@ export default function AdminReturnsPage() {
     });
   }, [returns, statusFilter, search]);
 
-  const syncActiveFromFreshList = async (returnIdToSync) => {
-    if (!returnIdToSync) return;
-    const st = statusFilter && statusFilter !== "all" ? `?status=${encodeURIComponent(statusFilter)}` : "";
-    const fresh = await apiFetch(`/api/sales/returns${st}`);
-    const list = Array.isArray(fresh) ? fresh : [];
-    setReturns(list);
-    const found = list.find((x) => String(x._id) === String(returnIdToSync));
-    if (found) setActive(found);
-  };
+  const syncActiveFromFreshList = useCallback(
+    async (returnIdToSync) => {
+      if (!returnIdToSync) return;
+      const st = statusFilter && statusFilter !== "all" ? `?status=${encodeURIComponent(statusFilter)}` : "";
+      const fresh = await apiFetch(`/api/sales/returns${st}`);
+      const list = Array.isArray(fresh) ? fresh : [];
+      setReturns(list);
+      const found = list.find((x) => String(x._id) === String(returnIdToSync));
+      if (found) setActive(found);
+    },
+    [statusFilter]
+  );
 
   const approveOnly = async (returnId) => {
     try {
       setErr("");
       setMsg("");
-      const ok = window.confirm("Approve this return request? (This will NOT refund yet.)");
+      const ok = window.confirm("Approve this return request? (No refund yet.)");
       if (!ok) return;
 
       setLoading(true);
 
       const data = await apiFetch(`/api/sales/returns/${returnId}/approve`, {
         method: "PATCH",
-        body: JSON.stringify({ refundNow: false, note: "Approved by sales manager" }),
+        body: JSON.stringify({ note: "Approved by sales manager" }),
       });
 
       setMsg(data?.message || "Approved.");
@@ -159,6 +160,7 @@ export default function AdminReturnsPage() {
     try {
       setErr("");
       setMsg("");
+
       const rejectReason = window.prompt("Reject reason (optional):", "");
       const ok = window.confirm("Reject this return request?");
       if (!ok) return;
@@ -167,7 +169,7 @@ export default function AdminReturnsPage() {
 
       const data = await apiFetch(`/api/sales/returns/${returnId}/reject`, {
         method: "PATCH",
-        body: JSON.stringify({ reason: rejectReason || "", note: rejectReason || "" }),
+        body: JSON.stringify({ reason: rejectReason || "" }),
       });
 
       setMsg(data?.message || "Rejected.");
@@ -188,7 +190,8 @@ export default function AdminReturnsPage() {
 
       setLoading(true);
 
-      const data = await apiFetch(`/api/sales/returns/${returnId}/receive`, {
+      // ✅ backend route is "/:id/received"
+      const data = await apiFetch(`/api/sales/returns/${returnId}/received`, {
         method: "PATCH",
         body: JSON.stringify({ note: "Received at warehouse" }),
       });
@@ -207,28 +210,14 @@ export default function AdminReturnsPage() {
       setErr("");
       setMsg("");
 
-      const amountStr = window.prompt("Refund amount (TL). Leave empty to auto-calc from order item:", "");
-      let refundedAmount = undefined;
-      if (amountStr != null && String(amountStr).trim() !== "") {
-        const n = Number(amountStr);
-        if (!(n > 0)) {
-          alert("Invalid amount. Please enter a positive number.");
-          return;
-        }
-        refundedAmount = n;
-      }
-
-      const ok = window.confirm("Process refund now? (This also restores stock in backend.)");
+      const ok = window.confirm("Process refund now?");
       if (!ok) return;
 
       setLoading(true);
 
       const data = await apiFetch(`/api/sales/returns/${returnId}/refund`, {
         method: "PATCH",
-        body: JSON.stringify({
-          refundedAmount,
-          note: refundedAmount ? `Refunded ${refundedAmount} TL` : "Refunded (auto amount)",
-        }),
+        body: JSON.stringify({ note: "Refund processed" }),
       });
 
       setMsg(data?.message || "Refunded.");
@@ -268,7 +257,7 @@ export default function AdminReturnsPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <h2 style={{ margin: 0 }}>Return Requests (Sales Manager)</h2>
         <button
-          onClick={() => loadReturns()}
+          onClick={() => loadReturns(statusFilter)}
           disabled={loading}
           style={{
             padding: "8px 12px",
@@ -368,7 +357,7 @@ export default function AdminReturnsPage() {
               const canApprove = st === "Requested";
               const canReject = st === "Requested";
               const canReceived = st === "Approved";
-              const canRefund = st === "Received" || st === "Approved";
+              const canRefund = st === "Received"; // ✅ align with backend
               const canComplete = st === "Refunded";
 
               return (
@@ -631,7 +620,7 @@ export default function AdminReturnsPage() {
               </button>
 
               <button
-                disabled={!(String(active.status) === "Received" || String(active.status) === "Approved") || loading}
+                disabled={String(active.status) !== "Received" || loading}
                 onClick={() => markRefunded(active._id)}
                 style={{
                   padding: "8px 12px",
@@ -639,7 +628,7 @@ export default function AdminReturnsPage() {
                   border: "1px solid #ccc",
                   background: "white",
                   fontWeight: 800,
-                  cursor: !loading ? "pointer" : "not-allowed",
+                  cursor: String(active.status) === "Received" && !loading ? "pointer" : "not-allowed",
                 }}
               >
                 Refund
