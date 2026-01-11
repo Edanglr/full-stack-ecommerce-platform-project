@@ -1,3 +1,4 @@
+
 // frontend/src/App.js
 
 import React, { useState, useEffect } from "react";
@@ -39,6 +40,14 @@ import PaymentPage from "./components/PaymentPage";
 
 // 🔴 LIVE CHAT
 import CustomerChat from "./components/chat/CustomerChat";
+
+import AdminInvoicesPage from "./components/AdminInvoicesPage";
+import SalesAnalyticsPage from "./components/SalesAnalyticsPage";
+
+console.log("SiteHeader:", SiteHeader);
+console.log("HeroVideo:", HeroVideo);
+console.log("ProductGrid:", ProductGrid);
+console.log("CustomerChat:", CustomerChat);
 
 console.log("APP ROUTES LOADED!");
 
@@ -251,7 +260,26 @@ function App() {
                 </RequireAuth>
               }
             />
+            
+            <Route
+              path="/admin/invoices"
+              element={
+                <RequireRole user={user} roles={["salesManager", "productManager"]}>
+                  <AdminInvoicesPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/admin/analytics"
+              element={
+                <RequireRole user={user} roles={["salesManager"]}>
+                  <SalesAnalyticsPage />
+                </RequireRole>
+              }
+            />
+            
           </Routes>
+
 
           {/* ✅ GLOBAL LIVE CHAT (Guest + Logged-in herkeste görünür) */}
           <CustomerChat user={user} />
