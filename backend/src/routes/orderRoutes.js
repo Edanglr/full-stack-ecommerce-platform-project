@@ -8,7 +8,7 @@ import path from "path";
 import fs from "fs";
 
 import { generateTrackingCode } from "../utils/trackingCode.js";
-import { requireAuth, requireManager, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 import { mockBankCharge } from "../utils/mockBank.js";
 import { generateInvoicePdf } from "../utils/invoice.js";
 import { sendInvoiceEmail } from "../utils/email.js";
@@ -30,6 +30,13 @@ const buildShippingAddress = (user, order) => ({
   postalCode: user?.postalCode || user?.zip || "",
 });
 
+function getItemProductId(it) {
+  const p = it?.productId;
+  if (!p) return null;
+  if (typeof p === "object" && p._id) return String(p._id);
+  return String(p);
+}
+
 /*
 1) Create a new order
 POST /api/orders
@@ -44,7 +51,7 @@ router.post("/", requireAuth, async (req, res) => {
 
     const productById = new Map();
 
-    // Stock check for each item
+    // Stock check
     for (const item of items) {
       const product = await Product.findById(item.productId);
       if (!product) {
@@ -67,7 +74,7 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    // Normalize items and compute purchase-time snapshots on the server
+    // Normalize items + snapshots
     const normalizedItems = items.map((item) => {
       const product = productById.get(String(item.productId));
       const qty = Number(item.quantity) || 0;
@@ -90,7 +97,7 @@ router.post("/", requireAuth, async (req, res) => {
         size: item.size || "",
         quantity: qty,
 
-        // Backward compatible field; always set from server effective price
+        // Backward compatible
         price: unitPrice,
 
         imageUrl: item.imageUrl || product.imageUrl || "",
@@ -130,20 +137,16 @@ router.post("/", requireAuth, async (req, res) => {
 
     const profitRaw = normalizedItems.reduce((sum, it) => {
       if (it.unitCostAtPurchase == null) return sum;
-      return (
-        sum +
-        (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) * it.quantity
-      );
+      return sum + (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) * it.quantity;
     }, 0);
 
     const profitAtPurchase = normalizedItems.some((it) => it.unitCostAtPurchase == null)
       ? null
       : round2(profitRaw);
 
-    // Keep totalAmount consistent for existing UI
     const totalAmount = totalAtPurchase;
 
-    // Mock bank payment
+    // Mock payment
     const paymentResult = await mockBankCharge({ amount: totalAmount, user: req.user });
     if (!paymentResult || !paymentResult.success) {
       return res.status(402).json({ message: "Payment failed. Please try again." });
@@ -183,7 +186,6 @@ router.post("/", requireAuth, async (req, res) => {
         newOrder.invoicePdfPath = pdfPath;
         await newOrder.save();
 
-        // ✅ FIX: pass correct params and pdfPath attachment support (email.js should handle pdfPath)
         if (user?.email) {
           await sendInvoiceEmail({
             to: user.email,
@@ -394,7 +396,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: "Order not found." });
 
-    if (order.user.toString() !== req.user.id) {
+    if (String(order.user) !== String(req.user.id)) {
       return res.status(403).json({ message: "Not authorized to cancel this order." });
     }
 
@@ -405,17 +407,21 @@ router.delete("/:id", requireAuth, async (req, res) => {
     }
 
     for (const item of order.items) {
-      await Product.findByIdAndUpdate(item.productId, {
+      const pid = getItemProductId(item);
+      if (!pid) continue;
+      await Product.findByIdAndUpdate(pid, {
         $inc: { [`sizes.${item.size}`]: item.quantity },
       });
     }
 
     order.shippingStatus = "Cancelled";
+    order.shippingHistory = order.shippingHistory || [];
     order.shippingHistory.push({
       status: "Order cancelled by customer",
       date: new Date(),
     });
     order.isCompleted = false;
+
     await order.save();
 
     return res.json({
@@ -427,139 +433,52 @@ router.delete("/:id", requireAuth, async (req, res) => {
 });
 
 /*
-4) Cancel an item in an order (support/product manager side)
-POST /api/orders/:orderId/cancel-item
+6) Support/Sales/Product manager cancel order (used by Support Chat panel)
+PUT /api/orders/:id/cancel
 */
-router.post(
-  "/:orderId/cancel-item",
-  requireRole("supportAgent", "productManager"),
+router.put(
+  "/:id/cancel",
+  requireAuth,
+  requireRole("supportAgent", "productManager", "salesManager", "manager"),
   async (req, res) => {
     try {
-      const { orderId } = req.params;
-      const { productId, size } = req.body;
-
-      const order = await Order.findById(orderId);
+      const order = await Order.findById(req.params.id);
       if (!order) return res.status(404).json({ message: "Order not found." });
 
-      const itemIndex = order.items.findIndex((it) => {
-        const itemProdId = it.productId._id ? it.productId._id.toString() : it.productId.toString();
-        const targetSize = size === "-" ? "" : size || "";
-        const itemSize = it.size === "-" ? "" : it.size || "";
-        return itemProdId === productId.toString() && itemSize === targetSize;
-      });
-
-      if (itemIndex === -1) return res.status(404).json({ message: "Item not found." });
-
-      const cancelledItem = order.items[itemIndex];
-
-      await Product.findByIdAndUpdate(cancelledItem.productId, {
-        $inc: { [`sizes.${cancelledItem.size || ""}`]: cancelledItem.quantity },
-      });
-
-      const unit = Number(cancelledItem.unitPriceAtPurchase ?? cancelledItem.price) || 0;
-      const list = Number(cancelledItem.unitListPriceAtPurchase ?? cancelledItem.price) || 0;
-      const qty = Number(cancelledItem.quantity) || 0;
-
-      order.totalAmount = Math.max(0, (order.totalAtPurchase ?? order.totalAmount ?? 0) - unit * qty);
-      order.totalAtPurchase = order.totalAmount;
-
-      if (order.subtotalAtPurchase != null) {
-        order.subtotalAtPurchase = Math.max(0, Number(order.subtotalAtPurchase) - list * qty);
-        order.discountTotalAtPurchase = Math.max(
-          0,
-          Number(order.subtotalAtPurchase) - Number(order.totalAtPurchase)
-        );
+      if (order.shippingStatus !== "Processing") {
+        return res.status(400).json({
+          message: `Cannot cancel order with status: ${order.shippingStatus}`,
+        });
       }
 
-      order.items.splice(itemIndex, 1);
-
-      order.shippingHistory.push({
-        status: `Item cancelled: ${cancelledItem.name}`,
-        date: new Date(),
-      });
+      for (const item of order.items) {
+        const pid = getItemProductId(item);
+        if (!pid) continue;
+        await Product.findByIdAndUpdate(pid, {
+          $inc: { [`sizes.${item.size}`]: item.quantity },
+        });
+      }
 
       order.shippingStatus = "Cancelled";
+      order.shippingHistory = order.shippingHistory || [];
+      order.shippingHistory.push({
+        status: `Cancelled by ${req.user?.role || "staff"}`,
+        date: new Date(),
+      });
       order.isCompleted = false;
 
       await order.save();
-      return res.json({ message: "Item successfully cancelled.", order });
+
+      return res.json({
+        message: "Order cancelled successfully.",
+        order,
+      });
     } catch (err) {
-      return res.status(500).json({ message: "Internal server error." });
+      console.error("CANCEL ORDER ERROR:", err);
+      return res.status(500).json({ message: "Failed to cancel order." });
     }
   }
 );
-
-/*
-5) Update order status (product manager side)
-PUT /api/orders/:id/status
-*/
-router.put("/:id/status", requireRole("productManager"), async (req, res) => {
-  try {
-    const { status } = req.body;
-    const allowed = ["Processing", "In-transit", "Delivered", "Cancelled"];
-
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ message: "Invalid status." });
-    }
-
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ message: "Order not found." });
-
-    order.shippingStatus = status;
-    order.shippingHistory.push({ status, date: new Date() });
-    order.isCompleted = status === "Delivered";
-
-    await order.save();
-    return res.json({ message: "Order status updated.", order });
-  } catch (err) {
-    return res.status(500).json({ message: "Error while updating status." });
-  }
-});
-
-
-router.put("/:id/cancel", requireManager, async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id);
-    
-    if (!order) {
-      return res.status(404).json({ message: "Order not found." });
-    }
-
-    // Sadece Processing durumundaki siparişler iptal edilebilir
-    if (order.shippingStatus !== "Processing") {
-      return res.status(400).json({ 
-        message: `Cannot cancel order with status: ${order.shippingStatus}` 
-      });
-    }
-
-    // Stokları geri yükle
-    for (const item of order.items) {
-      await Product.findByIdAndUpdate(item.productId, {
-        $inc: { [`sizes.${item.size}`]: item.quantity },
-      });
-    }
-
-    // Siparişi iptal et
-    order.shippingStatus = "Cancelled";
-    order.shippingHistory.push({ 
-      status: "Cancelled by support", 
-      date: new Date() 
-    });
-    order.isCompleted = true;
-
-    await order.save();
-
-    console.log(`✅ Order ${order._id} cancelled by ${req.user.name}`);
-
-    return res.json({
-      message: "Order cancelled successfully.",
-      order
-    });
-  } catch (err) {
-    console.error("CANCEL ORDER ERROR:", err);
-    res.status(500).json({ message: "Failed to cancel order." });
-  }
-});
 
 router.get("/track/:trackingCode", async (req, res) => {
   try {
@@ -609,6 +528,34 @@ router.get("/admin/deliveries", requireRole("productManager"), async (_req, res)
     return res.json(deliveryList);
   } catch (err) {
     return res.status(500).json({ message: "Error fetching deliveries." });
+  }
+});
+
+/*
+5) Update order status (product manager side)
+PUT /api/orders/:id/status
+*/
+router.put("/:id/status", requireRole("productManager"), async (req, res) => {
+  try {
+    const { status } = req.body;
+    const allowed = ["Processing", "In-transit", "Delivered", "Cancelled"];
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ message: "Invalid status." });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found." });
+
+    order.shippingStatus = status;
+    order.shippingHistory = order.shippingHistory || [];
+    order.shippingHistory.push({ status, date: new Date() });
+    order.isCompleted = status === "Delivered";
+
+    await order.save();
+    return res.json({ message: "Order status updated.", order });
+  } catch (err) {
+    return res.status(500).json({ message: "Error while updating status." });
   }
 });
 
