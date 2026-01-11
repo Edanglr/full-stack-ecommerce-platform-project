@@ -1,4 +1,3 @@
-
 // backend/src/routes/returnRoutes.js
 import express from "express";
 import ReturnRequest from "../models/returnModel.js";
@@ -60,30 +59,40 @@ router.post("/", requireAuth, async (req, res) => {
 
     const ship = String(order.shippingStatus || "").toLowerCase();
     if (ship !== "delivered") {
-      return res.status(400).json({ message: "You can only return delivered orders." });
+      return res
+        .status(400)
+        .json({ message: "You can only return delivered orders." });
     }
 
-    // Return window check: within 30 days of purchase (order createdAt)
+    // 30 day window from purchase time (order.createdAt)
     if (!isWithinReturnWindow(order.createdAt, 30)) {
-      return res.status(400).json({ message: "Return window expired. You can only request a return within 30 days of purchase." });
+      return res.status(400).json({
+        message:
+          "Return window expired. You can only request a return within 30 days of purchase.",
+      });
     }
 
     const orderItem = (order.items || []).find((it) => {
       const itemProdId = it.product || it.productId;
       const sameProd = String(itemProdId) === String(productId);
-      const sameSize = !size || String(it.size || "") === String(size || "");
+      const sameSize =
+        !size || String(it.size || "") === String(size || "");
       return sameProd && sameSize;
     });
 
     if (!orderItem) {
-      return res.status(400).json({ message: "This product is not part of the order." });
+      return res
+        .status(400)
+        .json({ message: "This product is not part of the order." });
     }
 
     const finalSize = (size || orderItem.size || "").toString();
     const finalQty = Number(quantity || orderItem.quantity || 1);
 
-    if (!finalSize) return res.status(400).json({ message: "Size is required for return." });
-    if (!finalQty || finalQty <= 0) return res.status(400).json({ message: "Invalid quantity." });
+    if (!finalSize)
+      return res.status(400).json({ message: "Size is required for return." });
+    if (!finalQty || finalQty <= 0)
+      return res.status(400).json({ message: "Invalid quantity." });
 
     const existingReturn = await ReturnRequest.findOne({
       order: orderId,
@@ -93,7 +102,9 @@ router.post("/", requireAuth, async (req, res) => {
     });
 
     if (existingReturn) {
-      return res.status(400).json({ message: "Return request already created for this item." });
+      return res
+        .status(400)
+        .json({ message: "Return request already created for this item." });
     }
 
     const returnRequest = await ReturnRequest.create({
@@ -105,6 +116,14 @@ router.post("/", requireAuth, async (req, res) => {
       reason,
       status: "Requested",
       requestedAt: new Date(),
+      statusHistory: [
+        {
+          status: "Requested",
+          note: reason,
+          by: userId,
+          at: new Date(),
+        },
+      ],
     });
 
     pushOrderHistory(order, `Return requested: ${reason}`);
@@ -153,11 +172,15 @@ router.get("/my", requireAuth, async (req, res) => {
 
 /*
 SALES MANAGER
-GET /api/returns
+GET /api/returns?status=Requested
 */
-router.get("/", requireSalesManager, async (_req, res) => {
+router.get("/", requireSalesManager, async (req, res) => {
   try {
-    const list = await ReturnRequest.find({})
+    const status = req.query?.status ? String(req.query.status) : null;
+    const filter = {};
+    if (status) filter.status = status;
+
+    const list = await ReturnRequest.find(filter)
       .populate("user", "name email")
       .populate("product", "name")
       .populate("order")
@@ -166,15 +189,17 @@ router.get("/", requireSalesManager, async (_req, res) => {
     return res.json(list);
   } catch (err) {
     console.error("GET ALL RETURNS ERROR:", err);
-    return res.status(500).json({ message: "Could not load return requests." });
+    return res
+      .status(500)
+      .json({ message: "Could not load return requests." });
   }
 });
 
 /*
 SALES MANAGER
 PATCH /api/returns/:id/approve
-Moves Requested -> Approved
-Stock update is done here
+Requested -> Approved
+✅ stock restore burada (senin requirement’a göre)
 */
 router.patch("/:id/approve", requireSalesManager, async (req, res) => {
   try {
@@ -186,18 +211,24 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
       .populate("product", "name")
       .populate("order");
 
-    if (!ret) return res.status(404).json({ message: "Return request not found." });
+    if (!ret)
+      return res.status(404).json({ message: "Return request not found." });
 
     if (ret.status !== "Requested") {
-      return res.status(400).json({ message: `Return status must be Requested (current: ${ret.status}).` });
+      return res.status(400).json({
+        message: `Return status must be Requested (current: ${ret.status}).`,
+      });
     }
 
     const order = ret.order;
-    if (!order) return res.status(400).json({ message: "Order not found for this return." });
+    if (!order)
+      return res.status(400).json({ message: "Order not found for this return." });
 
     const ship = String(order.shippingStatus || "").toLowerCase();
     if (ship !== "delivered") {
-      return res.status(400).json({ message: "Refund can only be approved if order is delivered." });
+      return res.status(400).json({
+        message: "Refund can only be approved if order is delivered.",
+      });
     }
 
     const orderItem = (order.items || []).find((it) => {
@@ -208,13 +239,16 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
     });
 
     if (!orderItem) {
-      return res.status(400).json({ message: "Matching order item not found for refund calculation." });
+      return res.status(400).json({
+        message: "Matching order item not found for refund calculation.",
+      });
     }
 
     const qty = Number(ret.quantity || 1);
 
-    // Refund amount must match purchase-time price (discount applied at purchase)
-    const unitPriceAtPurchase = Number(orderItem.unitPriceAtPurchase ?? orderItem.price ?? 0);
+    const unitPriceAtPurchase = Number(
+      orderItem.unitPriceAtPurchase ?? orderItem.price ?? 0
+    );
     const refundedAmount = unitPriceAtPurchase * qty;
 
     ret.status = "Approved";
@@ -225,6 +259,7 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
     pushReturnHistory(ret, "Approved", "Approved by sales manager", managerId);
     await ret.save();
 
+    // ✅ Stock restore (sizes map)
     if (ret.size) {
       await Product.updateOne(
         { _id: ret.product?._id || ret.product },
@@ -262,7 +297,7 @@ router.patch("/:id/approve", requireSalesManager, async (req, res) => {
 /*
 SALES MANAGER
 PATCH /api/returns/:id/reject
-Moves Requested -> Rejected
+Requested -> Rejected
 */
 router.patch("/:id/reject", requireSalesManager, async (req, res) => {
   try {
@@ -271,10 +306,13 @@ router.patch("/:id/reject", requireSalesManager, async (req, res) => {
     const reason = String(req.body?.reason || "");
 
     const ret = await ReturnRequest.findById(returnId);
-    if (!ret) return res.status(404).json({ message: "Return request not found." });
+    if (!ret)
+      return res.status(404).json({ message: "Return request not found." });
 
     if (ret.status !== "Requested") {
-      return res.status(400).json({ message: `Return status must be Requested (current: ${ret.status}).` });
+      return res.status(400).json({
+        message: `Return status must be Requested (current: ${ret.status}).`,
+      });
     }
 
     ret.status = "Rejected";
@@ -282,7 +320,12 @@ router.patch("/:id/reject", requireSalesManager, async (req, res) => {
     ret.rejectedAt = new Date();
     ret.processedAt = new Date();
 
-    pushReturnHistory(ret, "Rejected", reason ? `Rejected: ${reason}` : "Rejected by sales manager", managerId);
+    pushReturnHistory(
+      ret,
+      "Rejected",
+      reason ? `Rejected: ${reason}` : "Rejected by sales manager",
+      managerId
+    );
     await ret.save();
 
     return res.json({ message: "Return request rejected.", returnRequest: ret });
@@ -295,17 +338,22 @@ router.patch("/:id/reject", requireSalesManager, async (req, res) => {
 /*
 SALES MANAGER
 PATCH /api/returns/:id/received
-Moves Approved -> Received
+Approved -> Received
 */
 router.patch("/:id/received", requireSalesManager, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || null;
 
-    const ret = await ReturnRequest.findById(req.params.id).populate("order").populate("product", "name");
-    if (!ret) return res.status(404).json({ message: "Return request not found." });
+    const ret = await ReturnRequest.findById(req.params.id)
+      .populate("order")
+      .populate("product", "name");
+    if (!ret)
+      return res.status(404).json({ message: "Return request not found." });
 
     if (ret.status !== "Approved") {
-      return res.status(400).json({ message: `Return status must be Approved (current: ${ret.status}).` });
+      return res.status(400).json({
+        message: `Return status must be Approved (current: ${ret.status}).`,
+      });
     }
 
     ret.status = "Received";
@@ -330,26 +378,37 @@ router.patch("/:id/received", requireSalesManager, async (req, res) => {
 /*
 SALES MANAGER
 PATCH /api/returns/:id/refund
-Moves Received -> Refunded
+Received -> Refunded
+⚠️ burada stock restore YOK (zaten approve'da yaptık)
 */
 router.patch("/:id/refund", requireSalesManager, async (req, res) => {
   try {
-    const product = await Product.findById(returnReq.product);
-
-    restoreStockOnProduct(
-      product,
-      returnReq.size,
-      returnReq.quantity
-    );
-
-    await product.save();
     const managerId = req.user?.id || req.user?._id || null;
 
-    const ret = await ReturnRequest.findById(req.params.id).populate("order").populate("product", "name");
-    if (!ret) return res.status(404).json({ message: "Return request not found." });
+    const ret = await ReturnRequest.findById(req.params.id)
+      .populate("order")
+      .populate("product", "name");
+    if (!ret)
+      return res.status(404).json({ message: "Return request not found." });
 
     if (ret.status !== "Received") {
-      return res.status(400).json({ message: `Return status must be Received (current: ${ret.status}).` });
+      return res.status(400).json({
+        message: `Return status must be Received (current: ${ret.status}).`,
+      });
+    }
+
+    // optional manual override
+    const overrideAmount =
+      req.body?.refundedAmount != null && String(req.body.refundedAmount).trim() !== ""
+        ? Number(req.body.refundedAmount)
+        : null;
+
+    if (overrideAmount != null && !(overrideAmount > 0)) {
+      return res.status(400).json({ message: "Invalid refundedAmount." });
+    }
+
+    if (overrideAmount != null) {
+      ret.refundedAmount = Math.round(overrideAmount * 100) / 100;
     }
 
     ret.status = "Refunded";
@@ -360,7 +419,10 @@ router.patch("/:id/refund", requireSalesManager, async (req, res) => {
     await ret.save();
 
     if (ret.order) {
-      pushOrderHistory(ret.order, `Refunded (Return ${ret._id}) ${ret.refundedAmount} TL`);
+      pushOrderHistory(
+        ret.order,
+        `Refunded (Return ${ret._id}) ${ret.refundedAmount ?? ""} TL`
+      );
       await ret.order.save();
     }
 
@@ -374,17 +436,22 @@ router.patch("/:id/refund", requireSalesManager, async (req, res) => {
 /*
 SALES MANAGER
 PATCH /api/returns/:id/complete
-Moves Refunded -> Completed
+Refunded -> Completed
 */
 router.patch("/:id/complete", requireSalesManager, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || null;
 
-    const ret = await ReturnRequest.findById(req.params.id).populate("order").populate("product", "name");
-    if (!ret) return res.status(404).json({ message: "Return request not found." });
+    const ret = await ReturnRequest.findById(req.params.id)
+      .populate("order")
+      .populate("product", "name");
+    if (!ret)
+      return res.status(404).json({ message: "Return request not found." });
 
     if (ret.status !== "Refunded") {
-      return res.status(400).json({ message: `Return status must be Refunded (current: ${ret.status}).` });
+      return res.status(400).json({
+        message: `Return status must be Refunded (current: ${ret.status}).`,
+      });
     }
 
     ret.status = "Completed";
@@ -405,19 +472,5 @@ router.patch("/:id/complete", requireSalesManager, async (req, res) => {
     return res.status(500).json({ message: "Server error: " + err.message });
   }
 });
-
-function restoreStockOnProduct(productDoc, size, qty) {
-  const s = String(size || "").toUpperCase();
-  const q = Number(qty || 1);
-
-  if (!productDoc || !s || q <= 0) return;
-
-  if (productDoc.sizes && typeof productDoc.sizes === "object") {
-    if (productDoc.sizes[s] !== undefined) {
-      productDoc.sizes[s] += q;
-      productDoc.markModified("sizes");
-    }
-  }
-}
 
 export default router;
