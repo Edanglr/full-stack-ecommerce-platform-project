@@ -1,3 +1,4 @@
+
 // backend/src/routes/returnRoutes.js
 import express from "express";
 import ReturnRequest from "../models/returnModel.js";
@@ -333,6 +334,15 @@ Moves Received -> Refunded
 */
 router.patch("/:id/refund", requireSalesManager, async (req, res) => {
   try {
+    const product = await Product.findById(returnReq.product);
+
+    restoreStockOnProduct(
+      product,
+      returnReq.size,
+      returnReq.quantity
+    );
+
+    await product.save();
     const managerId = req.user?.id || req.user?._id || null;
 
     const ret = await ReturnRequest.findById(req.params.id).populate("order").populate("product", "name");
@@ -395,5 +405,19 @@ router.patch("/:id/complete", requireSalesManager, async (req, res) => {
     return res.status(500).json({ message: "Server error: " + err.message });
   }
 });
+
+function restoreStockOnProduct(productDoc, size, qty) {
+  const s = String(size || "").toUpperCase();
+  const q = Number(qty || 1);
+
+  if (!productDoc || !s || q <= 0) return;
+
+  if (productDoc.sizes && typeof productDoc.sizes === "object") {
+    if (productDoc.sizes[s] !== undefined) {
+      productDoc.sizes[s] += q;
+      productDoc.markModified("sizes");
+    }
+  }
+}
 
 export default router;
