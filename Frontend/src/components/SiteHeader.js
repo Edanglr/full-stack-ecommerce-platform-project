@@ -40,7 +40,7 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
     fontSize: "14px",
     width: "100%",
     color: "#333",
-    transition: "background 0.2s"
+    transition: "background 0.2s",
   };
 
   return (
@@ -124,6 +124,11 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                 </Nav.Link>
                 <Nav.Link as={Link} to="/admin/returns" className="ms-3">
                   Manage Returns
+                </Nav.Link>
+
+                {/* ✅ NEW: Analytics */}
+                <Nav.Link as={Link} to="/admin/analytics" className="ms-3">
+                  Analytics
                 </Nav.Link>
               </>
             )}
@@ -238,17 +243,11 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                     </div>
 
                     {/* Sadeleştirilmiş Menü Seçenekleri */}
-                    <button
-                      onClick={() => navigate("/profile")}
-                      style={dropdownButtonStyle}
-                    >
+                    <button onClick={() => navigate("/profile")} style={dropdownButtonStyle}>
                       Profile
                     </button>
 
-                    <button
-                      onClick={() => navigate("/orders")}
-                      style={dropdownButtonStyle}
-                    >
+                    <button onClick={() => navigate("/orders")} style={dropdownButtonStyle}>
                       My Orders
                     </button>
 
@@ -258,7 +257,7 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                         ...dropdownButtonStyle,
                         color: "red",
                         borderTop: "1px solid #eee",
-                        marginTop: "5px"
+                        marginTop: "5px",
                       }}
                     >
                       Log Out
