@@ -122,16 +122,21 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                 <Nav.Link as={Link} to="/admin/orders" className="ms-3">
                   Manage Orders
                 </Nav.Link>
+            
                 <Nav.Link as={Link} to="/admin/returns" className="ms-3">
                   Manage Returns
                 </Nav.Link>
-
-                {/* ✅ NEW: Analytics */}
+            
+                <Nav.Link as={Link} to="/admin/invoices" className="ms-3">
+                  Invoices
+                </Nav.Link>
+            
                 <Nav.Link as={Link} to="/admin/analytics" className="ms-3">
                   Analytics
                 </Nav.Link>
               </>
             )}
+
 
             {/* SUPPORT AGENT LINKS */}
             {user && isSupportAgent && (
@@ -283,3 +288,4 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
 }
 
 export default SiteHeader;
+
