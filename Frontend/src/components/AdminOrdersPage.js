@@ -124,14 +124,12 @@ function LineChart({
 
         <polyline fill="none" stroke="black" strokeWidth="2" points={points} />
 
-        <text x={padding + 6} y={padding + 10} fontSize="12">{`max: ${maxV.toFixed(
-          2
-        )}`}</text>
-        <text
-          x={padding + 6}
-          y={H - padding - 6}
-          fontSize="12"
-        >{`min: ${minV.toFixed(2)}`}</text>
+        <text x={padding + 6} y={padding + 10} fontSize="12">
+          {`max: ${maxV.toFixed(2)}`}
+        </text>
+        <text x={padding + 6} y={H - padding - 6} fontSize="12">
+          {`min: ${minV.toFixed(2)}`}
+        </text>
 
         {labelIdx.map((i) => (
           <text
@@ -229,7 +227,6 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
   useEffect(() => {
     loadInvoices();
     loadProducts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Eğer /admin/analytics gibi bir route üzerinden bu sayfaya geldiysek,
@@ -238,7 +235,6 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
     if (initialTab === "analytics") {
       loadAnalytics();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows = useMemo(() => {
