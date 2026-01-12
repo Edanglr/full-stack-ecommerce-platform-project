@@ -13,6 +13,13 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
   // ✅ FIX: categories artık backend'den gelecek
   const [categories, setCategories] = useState([]); // [{name, slug}] veya string list fallback
 
+  // ✅ NEW: label'ı düzgün göster
+  const toTitle = (s = "") => {
+    const str = String(s || "").trim();
+    if (!str) return "";
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  };
+
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -159,7 +166,7 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                       as={Link}
                       to={`/category/${encodeURIComponent(slug)}`}
                     >
-                      {name}
+                      {toTitle(name)}
                     </NavDropdown.Item>
                   );
                 })
