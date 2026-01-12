@@ -61,12 +61,32 @@ function pushReturnHistory(rr, status, note, byUserId) {
   });
 }
 
+/**
+ * ✅ FIX (Step 6.4): Wishlist / Favorite model field uyumu
+ * Bazı projelerde Favorite schema: { user, product }
+ * Bazılarında: { user, productId }
+ * Bu fonksiyon ikisini de destekler.
+ */
 async function notifyWishlistUsers(productIds, products, discountRate) {
-  const favs = await Favorite.find({ product: { $in: productIds } })
-    .select("user product")
+  const ids = Array.isArray(productIds)
+    ? [...new Set(productIds.filter(Boolean).map((x) => String(x)))]
+    : [];
+
+  if (!ids.length) return 0;
+
+  // Favorilerde ürün alan adı farklı olabiliyor: product veya productId
+  const favs = await Favorite.find({
+    $or: [{ product: { $in: ids } }, { productId: { $in: ids } }],
+  })
+    .select("user product productId")
     .lean();
 
-  const userIds = [...new Set(favs.map((f) => String(f.user)))];
+  const userIds = [
+    ...new Set((favs || []).map((f) => String(f.user)).filter(Boolean)),
+  ];
+
+  if (!userIds.length) return 0;
+
   const users = await User.find({ _id: { $in: userIds } })
     .select("email name")
     .lean();
@@ -74,7 +94,7 @@ async function notifyWishlistUsers(productIds, products, discountRate) {
   let notifiedCount = 0;
 
   for (const u of users) {
-    if (!u.email) continue;
+    if (!u?.email) continue;
     try {
       await sendDiscountEmail(u.email, u.name || "Customer", products, discountRate);
       notifiedCount++;
@@ -113,7 +133,6 @@ async function restoreStockForReturn(returnReq) {
 
 /**
  * ✅ Mock refund provider
- * (Gerçek provider bağlayacaksan burada değiştireceksin)
  */
 async function processPaymentRefundMock(order, amount) {
   const tx = order?.paymentDetails?.transactionId || "";
@@ -869,7 +888,6 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
 
     const doRefund = refundNow == null ? true : Boolean(refundNow);
     if (!doRefund) {
-      // Optional email on approve-only
       if (rr.user?.email) {
         try {
           await sendRefundApprovalEmail({
@@ -909,10 +927,9 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
     pushReturnHistory(
       rr,
       "Refunded",
-      String(`Approved & Refunded ${amount}. Stock: ${stockResult.restored ? "OK" : "SKIP"}. ${note || ""}`).slice(
-        0,
-        500
-      ),
+      String(
+        `Approved & Refunded ${amount}. Stock: ${stockResult.restored ? "OK" : "SKIP"}. ${note || ""}`
+      ).slice(0, 500),
       req.user?.id
     );
 
@@ -921,7 +938,6 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
     order.paymentStatus = "Refunded";
     await order.save();
 
-    // Email (refund info)
     if (rr.user?.email) {
       try {
         await sendRefundApprovalEmail({
