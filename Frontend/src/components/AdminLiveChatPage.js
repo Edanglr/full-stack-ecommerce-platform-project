@@ -16,14 +16,14 @@ function AdminLiveChatPage({ user }) {
   ================================= */
   const handleAdminNewMessage = useCallback((msg) => {
     console.log("📩 Admin received new message:", msg);
-    
+
     setActiveChats((prev) => {
       const existingChat = prev.find((c) => c.chatId === msg.chatId);
-      
+
       if (existingChat) {
-        const updatedChat = { 
-          ...existingChat, 
-          lastText: msg.text, 
+        const updatedChat = {
+          ...existingChat,
+          lastText: msg.text,
           status: 'active',
           updatedAt: new Date().toISOString()
         };
@@ -42,8 +42,8 @@ function AdminLiveChatPage({ user }) {
     });
   }, []);
 
-  useChatSocket({ 
-    onAdminMessage: handleAdminNewMessage 
+  useChatSocket({
+    onAdminMessage: handleAdminNewMessage
   });
 
   /* ================================
@@ -51,38 +51,38 @@ function AdminLiveChatPage({ user }) {
   ================================= */
   useEffect(() => {
     const token = localStorage.getItem("token");
-    
+
     if (!token) {
       setError("No authentication token found");
       setLoadingChats(false);
       return;
     }
-    
+
     const fetchChats = async () => {
       try {
         setLoadingChats(true);
         setError(null);
-        
+
         console.log("🔄 Fetching admin chat list...");
-        
+
         const res = await fetch("http://localhost:5050/api/chats/admin", {
-          headers: { 
+          headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
         });
-        
+
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
-        
+
         const data = await res.json();
         console.log("📊 Received chat data:", data);
-        
+
         if (!Array.isArray(data)) {
           throw new Error("Invalid response format - expected array");
         }
-        
+
         const formattedChats = data.map((c) => ({
           id: c.customerId,
           name: c.customerName,
@@ -92,10 +92,10 @@ function AdminLiveChatPage({ user }) {
           updatedAt: c.updatedAt || c.lastMessageAt,
           messageCount: c.messageCount || 0
         }));
-        
+
         console.log(`✅ Loaded ${formattedChats.length} chats`);
         setActiveChats(formattedChats);
-        
+
       } catch (err) {
         console.error("❌ Chat list fetch error:", err);
         setError(err.message);
@@ -104,7 +104,7 @@ function AdminLiveChatPage({ user }) {
         setLoadingChats(false);
       }
     };
-    
+
     fetchChats();
   }, []);
 
@@ -113,32 +113,33 @@ function AdminLiveChatPage({ user }) {
   ================================= */
   useEffect(() => {
     if (!selectedChat?.id) return;
-    
+
     const token = localStorage.getItem("token");
-    
+
     const fetchDetails = async () => {
       try {
         setLoadingDetails(true);
         console.log("🔍 Fetching customer details for:", selectedChat.id);
-        
+
         const [userRes, ordersRes] = await Promise.all([
-          fetch(`http://localhost:5050/api/chats/user-details/${selectedChat.id}`, { 
-            headers: { Authorization: `Bearer ${token}` } 
+          fetch(`http://localhost:5050/api/chats/user-details/${selectedChat.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
           }),
-          fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, { 
-            headers: { Authorization: `Bearer ${token}` } 
+          fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
           }),
         ]);
-        
+
         const userData = await userRes.json();
         const ordersData = await ordersRes.json();
-        
+
         console.log("✅ Customer details loaded:", userData.user?.name);
-        setCustomerDetails({ 
-          user: userData.user, 
-          orders: ordersData || [] 
+        setCustomerDetails({
+          user: userData.user,
+          orders: ordersData || [],
+          favorites: userData.favorites || [] // Favorites (Wishlist) eklendi
         });
-        
+
       } catch (err) {
         console.error("❌ Customer details error:", err);
         setCustomerDetails(null);
@@ -146,7 +147,7 @@ function AdminLiveChatPage({ user }) {
         setLoadingDetails(false);
       }
     };
-    
+
     fetchDetails();
   }, [selectedChat]);
 
@@ -155,24 +156,24 @@ function AdminLiveChatPage({ user }) {
   ================================= */
   const handleCancelOrder = async (orderId) => {
     if (!window.confirm("Are you sure you want to cancel this order?")) return;
-    
+
     const token = localStorage.getItem("token");
     setProcessingOrder(orderId);
-    
+
     try {
       const res = await fetch(`http://localhost:5050/api/orders/${orderId}/cancel`, {
         method: "PUT",
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (res.ok) {
         alert("Order cancelled successfully!");
         // Siparişleri yeniden yükle
-        const ordersRes = await fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, { 
-          headers: { Authorization: `Bearer ${token}` } 
+        const ordersRes = await fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         const ordersData = await ordersRes.json();
         setCustomerDetails(prev => ({ ...prev, orders: ordersData }));
@@ -190,14 +191,14 @@ function AdminLiveChatPage({ user }) {
 
   const handleInitiateReturn = async (orderId) => {
     if (!window.confirm("Initiate return for this order?")) return;
-    
+
     const token = localStorage.getItem("token");
     setProcessingOrder(orderId);
-    
+
     try {
       const res = await fetch(`http://localhost:5050/api/returns`, {
         method: "POST",
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
@@ -206,12 +207,12 @@ function AdminLiveChatPage({ user }) {
           reason: "Customer requested via live support"
         })
       });
-      
+
       if (res.ok) {
         alert("Return initiated successfully!");
         // Siparişleri yeniden yükle
-        const ordersRes = await fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, { 
-          headers: { Authorization: `Bearer ${token}` } 
+        const ordersRes = await fetch(`http://localhost:5050/api/orders/by-user/${selectedChat.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         const ordersData = await ordersRes.json();
         setCustomerDetails(prev => ({ ...prev, orders: ordersData }));
@@ -229,7 +230,7 @@ function AdminLiveChatPage({ user }) {
 
   if (!user) {
     return (
-      <div style={{marginTop: 100, textAlign: 'center'}}>
+      <div style={{ marginTop: 100, textAlign: 'center' }}>
         Loading Admin Panel...
       </div>
     );
@@ -240,7 +241,7 @@ function AdminLiveChatPage({ user }) {
       {/* SOL PANEL */}
       <div style={styles.leftPanel}>
         <h3 style={styles.panelTitle}>Conversations</h3>
-        
+
         {loadingChats ? (
           <div style={styles.loadingState}>
             <div style={styles.spinner}></div>
@@ -248,9 +249,9 @@ function AdminLiveChatPage({ user }) {
           </div>
         ) : error ? (
           <div style={styles.errorState}>
-            <p style={{color: '#d9534f', fontSize: 14}}>⚠️ {error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
+            <p style={{ color: '#d9534f', fontSize: 14 }}>⚠️ {error}</p>
+            <button
+              onClick={() => window.location.reload()}
               style={styles.retryButton}
             >
               Retry
@@ -258,8 +259,8 @@ function AdminLiveChatPage({ user }) {
           </div>
         ) : activeChats.length === 0 ? (
           <div style={styles.emptyState}>
-            <p style={{fontSize: 14, color: '#999'}}>No active conversations yet.</p>
-            <p style={{fontSize: 12, color: '#bbb', marginTop: 10}}>
+            <p style={{ fontSize: 14, color: '#999' }}>No active conversations yet.</p>
+            <p style={{ fontSize: 12, color: '#bbb', marginTop: 10 }}>
               Chats will appear here when customers send messages.
             </p>
           </div>
@@ -267,7 +268,7 @@ function AdminLiveChatPage({ user }) {
           activeChats.map((c) => {
             const isClosed = c.status === 'closed';
             const isSelected = selectedChat?.chatId === c.chatId;
-            
+
             return (
               <div
                 key={c.chatId}
@@ -283,12 +284,12 @@ function AdminLiveChatPage({ user }) {
                   setSelectedChat(c);
                 }}
               >
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontWeight: "bold", fontSize: 14 }}>{c.name}</div>
                   <span style={{
-                    fontSize: 10, 
-                    padding: "2px 6px", 
-                    borderRadius: 4, 
+                    fontSize: 10,
+                    padding: "2px 6px",
+                    borderRadius: 4,
                     background: isClosed ? "#ddd" : "#28a745",
                     color: isClosed ? "#555" : "#fff",
                     fontWeight: 'bold'
@@ -315,30 +316,30 @@ function AdminLiveChatPage({ user }) {
         {selectedChat ? (
           <>
             {selectedChat.status === 'closed' && (
-               <div style={{ 
-                 padding: 10, 
-                 background: '#fff3cd', 
-                 color: '#856404', 
-                 marginBottom: 10, 
-                 borderRadius: 5, 
-                 fontSize: 13, 
-                 textAlign:'center',
-                 border: '1px solid #ffeeba'
-               }}>
-                 ⚠️ This chat has been ended by the customer. History is preserved.
-               </div>
+              <div style={{
+                padding: 10,
+                background: '#fff3cd',
+                color: '#856404',
+                marginBottom: 10,
+                borderRadius: 5,
+                fontSize: 13,
+                textAlign: 'center',
+                border: '1px solid #ffeeba'
+              }}>
+                ⚠️ This chat has been ended by the customer. History is preserved.
+              </div>
             )}
             <SupportChat
               supportUser={user}
               chatId={selectedChat.chatId}
               customerName={selectedChat.name}
-              isChatClosed={selectedChat.status === 'closed'} 
+              isChatClosed={selectedChat.status === 'closed'}
             />
           </>
         ) : (
           <div style={styles.centerEmptyState}>
-            <div style={{fontSize: 48, marginBottom: 20}}>💬</div>
-            <p style={{fontSize: 16, color: '#666'}}>Select a chat to see conversation history</p>
+            <div style={{ fontSize: 48, marginBottom: 20 }}>💬</div>
+            <p style={{ fontSize: 16, color: '#666' }}>Select a chat to see conversation history</p>
           </div>
         )}
       </div>
@@ -359,171 +360,206 @@ function AdminLiveChatPage({ user }) {
               <p><strong>Phone:</strong> {customerDetails.user?.phone || "N/A"}</p>
               <p><strong>Address:</strong> {customerDetails.user?.address || "N/A"}</p>
             </div>
+            {/* WISHLIST SECTION */}
             <hr style={styles.divider} />
-            
-            <h4 style={styles.sectionTitle}>Order History</h4>
-            {customerDetails.orders.length > 0 ? (
-                customerDetails.orders.map((o) => {
-                  const canCancel = o.status === 'Processing';
-                  const canReturn = o.status === 'Delivered';
-                  const isProcessing = processingOrder === o._id;
-                  
+
+            <h4 style={styles.sectionTitle}>Wishlist ({customerDetails.favorites?.length || 0})</h4>
+            {customerDetails.favorites && customerDetails.favorites.length > 0 ? (
+              <div style={styles.wishlistGrid}>
+                {customerDetails.favorites.map((fav) => {
+                  const product = fav.product;
+                  if (!product) return null;
+
                   return (
-                    <div key={o._id} style={styles.orderCard}>
-                      <div style={{display:'flex', justifyContent:'space-between', marginBottom: 8}}>
-                         <span style={{fontWeight:'bold', fontSize: 14}}>#{o.orderCode}</span>
-                         <span style={{
-                           fontSize:12, 
-                           background: o.status === 'Cancelled' ? '#ffdada' : 
-                                      o.status === 'Delivered' ? '#d4edda' :
-                                      o.status === 'Processing' ? '#fff3cd' : '#dcf8c6', 
-                           padding:'3px 8px', 
-                           borderRadius:4,
-                           fontWeight: '600'
-                         }}>
-                           {o.status}
-                         </span>
-                      </div>
-                      
-                      <p style={{margin:'5px 0', fontSize:14, color: '#555'}}>
-                        <strong>{o.totalPrice} TL</strong>
-                      </p>
-                      
-                      <div style={{fontSize: 12, color: '#999', marginBottom: 10}}>
-                        {new Date(o.createdAt).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </div>
-                      
-                      {/* Action Buttons */}
-                      <div style={{display: 'flex', gap: 8, marginTop: 10}}>
-                        {canCancel && (
-                          <button
-                            onClick={() => handleCancelOrder(o._id)}
-                            disabled={isProcessing}
-                            style={{
-                              flex: 1,
-                              padding: '6px 10px',
-                              background: isProcessing ? '#ccc' : '#ff4d4d',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: 4,
-                              fontSize: 12,
-                              fontWeight: '600',
-                              cursor: isProcessing ? 'not-allowed' : 'pointer'
-                            }}
-                          >
-                            {isProcessing ? 'Processing...' : 'Cancel Order'}
-                          </button>
-                        )}
-                        
-                        {canReturn && (
-                          <button
-                            onClick={() => handleInitiateReturn(o._id)}
-                            disabled={isProcessing}
-                            style={{
-                              flex: 1,
-                              padding: '6px 10px',
-                              background: isProcessing ? '#ccc' : '#ffc107',
-                              color: '#000',
-                              border: 'none',
-                              borderRadius: 4,
-                              fontSize: 12,
-                              fontWeight: '600',
-                              cursor: isProcessing ? 'not-allowed' : 'pointer'
-                            }}
-                          >
-                            {isProcessing ? 'Processing...' : 'Initiate Return'}
-                          </button>
-                        )}
+                    <div key={fav._id} style={styles.wishlistItem}>
+                      <img
+                        src={product.imageUrl || "https://via.placeholder.com/50"}
+                        alt={product.name}
+                        style={styles.wishlistImage}
+                      />
+                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <div style={styles.wishlistName} title={product.name}>
+                          {product.name}
+                        </div>
+                        <div style={styles.wishlistPrice}>
+                          {product.price} TL
+                        </div>
                       </div>
                     </div>
-                  );
-                })
+                  )
+                })}
+              </div>
             ) : (
-              <p style={{fontSize:13, color:'#999'}}>No orders found.</p>
+              <p style={{ fontSize: 13, color: '#999' }}>No items in wishlist.</p>
+            )}
+
+            <hr style={styles.divider} />
+
+            <h4 style={styles.sectionTitle}>Order History</h4>
+            {customerDetails.orders.length > 0 ? (
+              customerDetails.orders.map((o) => {
+                const canCancel = o.status === 'Processing';
+                const canReturn = o.status === 'Delivered';
+                const isProcessing = processingOrder === o._id;
+
+                return (
+                  <div key={o._id} style={styles.orderCard}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontWeight: 'bold', fontSize: 14 }}>#{o.orderCode}</span>
+                      <span style={{
+                        fontSize: 12,
+                        background: o.status === 'Cancelled' ? '#ffdada' :
+                          o.status === 'Delivered' ? '#d4edda' :
+                            o.status === 'Processing' ? '#fff3cd' : '#dcf8c6',
+                        padding: '3px 8px',
+                        borderRadius: 4,
+                        fontWeight: '600'
+                      }}>
+                        {o.status}
+                      </span>
+                    </div>
+
+                    <p style={{ margin: '5px 0', fontSize: 14, color: '#555' }}>
+                      <strong>{o.totalPrice} TL</strong>
+                    </p>
+
+                    <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>
+                      {new Date(o.createdAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      {canCancel && (
+                        <button
+                          onClick={() => handleCancelOrder(o._id)}
+                          disabled={isProcessing}
+                          style={{
+                            flex: 1,
+                            padding: '6px 10px',
+                            background: isProcessing ? '#ccc' : '#ff4d4d',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 4,
+                            fontSize: 12,
+                            fontWeight: '600',
+                            cursor: isProcessing ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {isProcessing ? 'Processing...' : 'Cancel Order'}
+                        </button>
+                      )}
+
+                      {canReturn && (
+                        <button
+                          onClick={() => handleInitiateReturn(o._id)}
+                          disabled={isProcessing}
+                          style={{
+                            flex: 1,
+                            padding: '6px 10px',
+                            background: isProcessing ? '#ccc' : '#ffc107',
+                            color: '#000',
+                            border: 'none',
+                            borderRadius: 4,
+                            fontSize: 12,
+                            fontWeight: '600',
+                            cursor: isProcessing ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {isProcessing ? 'Processing...' : 'Initiate Return'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <p style={{ fontSize: 13, color: '#999' }}>No orders found.</p>
             )}
           </div>
         ) : (
           <div style={styles.centerEmptyState}>
-            <div style={{fontSize: 36, marginBottom: 15}}>👤</div>
-            <p style={{fontSize: 14, color: '#999'}}>User details will appear here</p>
+            <div style={{ fontSize: 36, marginBottom: 15 }}>👤</div>
+            <p style={{ fontSize: 14, color: '#999' }}>User details will appear here</p>
           </div>
         )}
+
+
       </div>
     </div>
   );
 }
 
 const styles = {
-  container: { 
-    display: "flex", 
-    height: "calc(100vh - 80px)", 
-    marginTop: 80, 
-    backgroundColor: "#f0f2f5" 
+  container: {
+    display: "flex",
+    height: "calc(100vh - 80px)",
+    marginTop: 80,
+    backgroundColor: "#f0f2f5"
   },
-  leftPanel: { 
-    width: 300, 
-    borderRight: "1px solid #ddd", 
-    padding: 15, 
-    backgroundColor: "#fff", 
-    overflowY: "auto" 
+  leftPanel: {
+    width: 300,
+    borderRight: "1px solid #ddd",
+    padding: 15,
+    backgroundColor: "#fff",
+    overflowY: "auto"
   },
-  middlePanel: { 
-    flex: 2, 
-    padding: 15, 
-    display: "flex", 
-    flexDirection: "column" 
+  middlePanel: {
+    flex: 2,
+    padding: 15,
+    display: "flex",
+    flexDirection: "column"
   },
-  rightPanel: { 
-    width: 350, 
-    padding: 20, 
-    borderLeft: "1px solid #ddd", 
-    backgroundColor: "#fff", 
-    overflowY: "auto" 
+  rightPanel: {
+    width: 350,
+    padding: 20,
+    borderLeft: "1px solid #ddd",
+    backgroundColor: "#fff",
+    overflowY: "auto"
   },
-  panelTitle: { 
-    fontSize: 18, 
-    marginBottom: 20, 
-    fontWeight: 600 
+  panelTitle: {
+    fontSize: 18,
+    marginBottom: 20,
+    fontWeight: 600
   },
-  sectionTitle: { 
-    fontSize: 16, 
-    fontWeight: "bold", 
-    marginBottom: 12 
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 12
   },
-  customerItem: { 
-    padding: 15, 
-    borderRadius: 10, 
-    marginBottom: 10, 
-    transition: "0.2s" 
+  customerItem: {
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    transition: "0.2s"
   },
-  profileBox: { 
-    fontSize: 14, 
-    lineHeight: 1.8 
+  profileBox: {
+    fontSize: 14,
+    lineHeight: 1.8
   },
-  divider: { 
-    margin: "20px 0", 
-    borderTop: "1px solid #eee" 
+  divider: {
+    margin: "20px 0",
+    borderTop: "1px solid #eee"
   },
-  orderCard: { 
-    padding: 14, 
-    backgroundColor: "#f8f9fa", 
-    borderRadius: 8, 
-    marginBottom: 12, 
-    border: "1px solid #eee" 
+  orderCard: {
+    padding: 14,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 8,
+    marginBottom: 12,
+    border: "1px solid #eee"
   },
-  emptyState: { 
-    padding: 40, 
-    textAlign: "center", 
-    color: "#aaa" 
+  emptyState: {
+    padding: 40,
+    textAlign: "center",
+    color: "#aaa"
   },
-  centerEmptyState: { 
-    padding: 40, 
-    textAlign: "center", 
-    color: "#aaa", 
+  centerEmptyState: {
+    padding: 40,
+    textAlign: "center",
+    color: "#aaa",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
@@ -557,6 +593,40 @@ const styles = {
     borderRadius: 5,
     cursor: "pointer",
     fontSize: 14,
+    fontWeight: "bold"
+  },
+  wishlistGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+    gap: 10
+  },
+  wishlistItem: {
+    border: "1px solid #eee",
+    borderRadius: 8,
+    padding: 8,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#f8f9fa"
+  },
+  wishlistImage: {
+    width: 40,
+    height: 40,
+    objectFit: "cover",
+    borderRadius: 4,
+    backgroundColor: "#fff"
+  },
+  wishlistName: {
+    fontSize: 12,
+    fontWeight: "600",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    marginBottom: 2
+  },
+  wishlistPrice: {
+    fontSize: 11,
+    color: "#28a745",
     fontWeight: "bold"
   }
 };
