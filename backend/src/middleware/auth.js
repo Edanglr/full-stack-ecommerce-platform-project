@@ -1,12 +1,11 @@
+// backend/src/middleware/auth.js
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 // Token'ı cookie veya Authorization header'dan oku
 const getTokenFromReq = (req) => {
-  // cookie
   if (req.cookies?.token) return req.cookies.token;
 
-  // bearer
   const auth = req.headers.authorization;
   if (auth && auth.startsWith("Bearer ")) return auth.slice(7);
 
@@ -20,7 +19,6 @@ export const requireAuth = async (req, res, next) => {
 
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(payload.id).select("-passwordHash");
-
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
     req.user = user;
@@ -30,28 +28,38 @@ export const requireAuth = async (req, res, next) => {
   }
 };
 
-// Eski "manager" rolünü legacy olarak kabul edip admin yetkisi gibi kullanacağız.
+// legacy manager -> her admin işini yapabilsin
 const normalizeRole = (role) => role || "customer";
 
-export const requireRole = (roles = []) => [
-  requireAuth,
-  (req, res, next) => {
-    const role = normalizeRole(req.user?.role);
+/**
+ * ✅ FIX: requireRole artık hem
+ *  - requireRole("salesManager","productManager")
+ *  - requireRole(["salesManager","productManager"])
+ *  - requireRole() (hiç rol vermezsen) -> forbidden
+ * destekler.
+ */
+export const requireRole = (...rolesInput) => {
+  const roles =
+    rolesInput.length === 1 && Array.isArray(rolesInput[0])
+      ? rolesInput[0]
+      : rolesInput;
 
-    // legacy manager -> her admin işini yapabilsin (geriye uyumluluk)
-    if (role === "manager") return next();
+  return [
+    requireAuth,
+    (req, res, next) => {
+      const role = normalizeRole(req.user?.role);
 
-    if (!roles.includes(role)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    next();
-  },
-];
+      if (role === "manager") return next(); // legacy bypass
 
-// PDF rolleri
-export const requireSalesManager = requireRole(["salesManager"]);
-export const requireProductManager = requireRole(["productManager"]);
-export const requireSupportAgent = requireRole(["supportAgent"]);
+      if (!roles.length || !roles.includes(role)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      next();
+    },
+  ];
+};
 
-// Kodun eski yerleri kırılmasın diye (adminProductRoutes/adminOrderRoutes vs.)
-export const requireManager = requireRole(["salesManager", "productManager", "supportAgent"]);
+export const requireSalesManager = requireRole("salesManager");
+export const requireProductManager = requireRole("productManager");
+export const requireSupportAgent = requireRole("supportAgent");
+export const requireManager = requireRole("salesManager", "productManager", "supportAgent");
