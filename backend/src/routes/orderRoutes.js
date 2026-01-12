@@ -137,7 +137,11 @@ router.post("/", requireAuth, async (req, res) => {
 
     const profitRaw = normalizedItems.reduce((sum, it) => {
       if (it.unitCostAtPurchase == null) return sum;
-      return sum + (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) * it.quantity;
+      return (
+        sum +
+        (Number(it.unitPriceAtPurchase ?? it.price) - Number(it.unitCostAtPurchase)) *
+          it.quantity
+      );
     }, 0);
 
     const profitAtPurchase = normalizedItems.some((it) => it.unitCostAtPurchase == null)
@@ -502,61 +506,71 @@ router.get("/track/:trackingCode", async (req, res) => {
 7) Delivery list (product manager side)
 GET /api/orders/admin/deliveries
 */
-router.get("/admin/deliveries", requireRole("productManager"), async (_req, res) => {
-  try {
-    const orders = await Order.find({})
-      .populate("user", "name email")
-      .lean()
-      .sort({ createdAt: -1 });
+router.get(
+  "/admin/deliveries",
+  requireAuth,
+  requireRole("productManager"),
+  async (_req, res) => {
+    try {
+      const orders = await Order.find({})
+        .populate("user", "name email")
+        .lean()
+        .sort({ createdAt: -1 });
 
-    const deliveryList = orders.flatMap((order) =>
-      (order.items || []).map((item) => ({
-        deliveryId: order._id,
-        customerId: order.user?._id || order.user,
-        customerName: order.user?.name || order.user?.email || "Unknown",
-        productId: item.productId,
-        productName: item.name,
-        quantity: item.quantity,
-        totalPrice: (item.unitPriceAtPurchase ?? item.price) * item.quantity,
-        deliveryAddress: order.deliveryAddress || "Not specified",
-        shippingStatus: order.shippingStatus,
-        trackingCode: order.trackingCode,
-        createdAt: order.createdAt,
-      }))
-    );
+      const deliveryList = orders.flatMap((order) =>
+        (order.items || []).map((item) => ({
+          deliveryId: order._id,
+          customerId: order.user?._id || order.user,
+          customerName: order.user?.name || order.user?.email || "Unknown",
+          productId: item.productId,
+          productName: item.name,
+          quantity: item.quantity,
+          totalPrice: (item.unitPriceAtPurchase ?? item.price) * item.quantity,
+          deliveryAddress: order.deliveryAddress || "Not specified",
+          shippingStatus: order.shippingStatus,
+          trackingCode: order.trackingCode,
+          createdAt: order.createdAt,
+        }))
+      );
 
-    return res.json(deliveryList);
-  } catch (err) {
-    return res.status(500).json({ message: "Error fetching deliveries." });
+      return res.json(deliveryList);
+    } catch (err) {
+      return res.status(500).json({ message: "Error fetching deliveries." });
+    }
   }
-});
+);
 
 /*
 5) Update order status (product manager side)
 PUT /api/orders/:id/status
 */
-router.put("/:id/status", requireRole("productManager"), async (req, res) => {
-  try {
-    const { status } = req.body;
-    const allowed = ["Processing", "In-transit", "Delivered", "Cancelled"];
+router.put(
+  "/:id/status",
+  requireAuth,
+  requireRole("productManager"),
+  async (req, res) => {
+    try {
+      const { status } = req.body;
+      const allowed = ["Processing", "In-transit", "Delivered", "Cancelled"];
 
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ message: "Invalid status." });
+      if (!allowed.includes(status)) {
+        return res.status(400).json({ message: "Invalid status." });
+      }
+
+      const order = await Order.findById(req.params.id);
+      if (!order) return res.status(404).json({ message: "Order not found." });
+
+      order.shippingStatus = status;
+      order.shippingHistory = order.shippingHistory || [];
+      order.shippingHistory.push({ status, date: new Date() });
+      order.isCompleted = status === "Delivered";
+
+      await order.save();
+      return res.json({ message: "Order status updated.", order });
+    } catch (err) {
+      return res.status(500).json({ message: "Error while updating status." });
     }
-
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ message: "Order not found." });
-
-    order.shippingStatus = status;
-    order.shippingHistory = order.shippingHistory || [];
-    order.shippingHistory.push({ status, date: new Date() });
-    order.isCompleted = status === "Delivered";
-
-    await order.save();
-    return res.json({ message: "Order status updated.", order });
-  } catch (err) {
-    return res.status(500).json({ message: "Error while updating status." });
   }
-});
+);
 
 export default router;
