@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import SupportChat from "./chat/SupportChat";
 import { useChatSocket } from "../hooks/useChatSocket";
 
-function AdminLiveChatPage({ user }) {
+
+function AdminLiveChatPage({ user, setHasNewSupportMessage }) {
   const [activeChats, setActiveChats] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [customerDetails, setCustomerDetails] = useState(null);
@@ -11,10 +12,17 @@ function AdminLiveChatPage({ user }) {
   const [error, setError] = useState(null);
   const [processingOrder, setProcessingOrder] = useState(null);
 
+  
+
   /* ================================
      1️⃣ Anlık Mesaj Dinleme (Socket.io)
   ================================= */
   const handleAdminNewMessage = useCallback((msg) => {
+
+    if (!window.location.pathname.includes("/admin/chats")) {
+      setHasNewSupportMessage(true);
+    }
+
     console.log("📩 Admin received new message:", msg);
 
     setActiveChats((prev) => {
@@ -57,7 +65,7 @@ function AdminLiveChatPage({ user }) {
       setLoadingChats(false);
       return;
     }
-
+    
     const fetchChats = async () => {
       try {
         setLoadingChats(true);
@@ -104,13 +112,16 @@ function AdminLiveChatPage({ user }) {
         setLoadingChats(false);
       }
     };
-
+    setHasNewSupportMessage(false);
     fetchChats();
   }, []);
-
-  /* ================================
-     3️⃣ Kullanıcı Detayları ve Siparişler
-  ================================= */
+  const handleChatDeleted = useCallback((deletedChatId) => {
+    setActiveChats((prev) => prev.filter((c) => c.chatId !== deletedChatId));
+    
+    
+    setSelectedChat(null);
+    setCustomerDetails(null);
+  }, []);
   useEffect(() => {
     if (!selectedChat?.id) return;
 
@@ -265,50 +276,49 @@ function AdminLiveChatPage({ user }) {
             </p>
           </div>
         ) : (
+          /* ================================
+            SOL PANEL - Chat Listesi Kısmı
+          ================================= */
           activeChats.map((c) => {
-            const isClosed = c.status === 'closed';
             const isSelected = selectedChat?.chatId === c.chatId;
-
             return (
               <div
                 key={c.chatId}
+                onClick={() => setSelectedChat(c)}
                 style={{
                   ...styles.customerItem,
-                  background: isSelected ? "#eef6ff" : (isClosed ? "#f9f9f9" : "transparent"),
-                  border: isSelected ? "1px solid #007bff" : "1px solid transparent",
-                  opacity: isClosed && !isSelected ? 0.6 : 1,
-                  cursor: 'pointer'
-                }}
-                onClick={() => {
-                  console.log("📌 Selected chat:", c);
-                  setSelectedChat(c);
+                  backgroundColor: isSelected ? "#eef5ff" : "#fff",
+                  borderLeft: isSelected ? "4px solid #007bff" : "4px solid transparent"
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontWeight: "bold", fontSize: 14 }}>{c.name}</div>
-                  <span style={{
-                    fontSize: 10,
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                    background: isClosed ? "#ddd" : "#28a745",
-                    color: isClosed ? "#555" : "#fff",
-                    fontWeight: 'bold'
-                  }}>
-                    {isClosed ? "Ended" : "Active"}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                  {c.lastText ? (c.lastText.length > 30 ? c.lastText.substring(0, 30) + "..." : c.lastText) : "No messages"}
-                </div>
-                {c.messageCount > 0 && (
-                  <div style={{ fontSize: 11, color: "#999", marginTop: 3 }}>
-                    {c.messageCount} message{c.messageCount !== 1 ? 's' : ''}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</div>
+                    <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
+                      {c.lastText?.length > 35 ? c.lastText.slice(0, 35) + "…" : c.lastText}
+                    </div>
                   </div>
-                )}
+
+                  {isSelected && (
+                    <button
+                      title="Clear chat"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleChatDeleted(c.chatId);
+                      }}
+                      style={styles.deleteIconBtn}
+                    >
+                      delete
+                    </button>
+                  )}
+                </div>
               </div>
+
             );
+
           })
         )}
+
       </div>
 
       {/* ORTA PANEL */}
@@ -333,7 +343,8 @@ function AdminLiveChatPage({ user }) {
               supportUser={user}
               chatId={selectedChat.chatId}
               customerName={selectedChat.name}
-              isChatClosed={selectedChat.status === 'closed'}
+              onChatDeleted={handleChatDeleted}
+              
             />
           </>
         ) : (
@@ -624,11 +635,31 @@ const styles = {
     textOverflow: "ellipsis",
     marginBottom: 2
   },
-  wishlistPrice: {
-    fontSize: 11,
-    color: "#28a745",
-    fontWeight: "bold"
-  }
+wishlistPrice: {
+  fontSize: 11,
+  color: "#28a745",
+  fontWeight: "bold"
+},
+
+customerItem: {
+  padding: "12px 14px",
+  borderRadius: 10000,
+  marginBottom: 8,
+  cursor: "pointer",
+  transition: "all 0.2s ease",
+  backgroundColor: "#fff"
+},
+
+deleteIconBtn: {
+  background: "#de7d7d",
+  border: "none",
+  borderRadius: 10000,
+  fontSize: 10,
+  cursor: "pointer",
+  opacity: 1,
+  transition: "0.2s"
+},
+
 };
 
 export default AdminLiveChatPage;

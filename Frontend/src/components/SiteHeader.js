@@ -3,7 +3,8 @@ import { Navbar, Nav, NavDropdown, Container } from "react-bootstrap";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 
-function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
+function SiteHeader({ user, onLogout, searchTerm, setSearchTerm, hasNewSupportMessage }) {
+
   const navigate = useNavigate();
   const { cartCount } = useCart();
 
@@ -206,12 +207,33 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
               </>
             )}
 
+           
             {/* SUPPORT AGENT LINKS */}
             {user && isSupportAgent && (
-              <Nav.Link as={Link} to="/admin/chats" className="ms-3">
+              <Nav.Link
+                as={Link}
+                to="/admin/chats"
+                className="ms-3"
+                style={{ position: "relative", display: "inline-block" }}
+              >
                 Live Support
+
+                {hasNewSupportMessage && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "2px",
+                      right: "-6px",
+                      width: "8px",
+                      height: "8px",
+                      backgroundColor: "#dc3545",
+                      borderRadius: "50%",
+                    }}
+                  />
+                )}
               </Nav.Link>
             )}
+
 
             {/* TRACK ORDER */}
             <Nav.Link

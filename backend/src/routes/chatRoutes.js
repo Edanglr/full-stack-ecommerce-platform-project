@@ -221,7 +221,7 @@ router.get("/:chatId", async (req, res) => {
   }
 });
 
-// ✅ Sohbeti Sonlandırma (Status: closed)
+
 router.put("/:chatId/close", async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -253,5 +253,25 @@ router.put("/:chatId/close", async (req, res) => {
     res.status(500).json({ message: "Error closing chat", error: err.message });
   }
 });
+
+// ✅ Sohbet oturumunu TAMAMEN silme (DB'den kaldırır)
+router.delete("/:chatId", requireAuth, requireRole("supportAgent", "manager"), async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    
+    
+    const deletedChat = await Chat.findOneAndDelete({ chatId: chatId });
+
+    if (!deletedChat) {
+      return res.status(404).json({ message: "chat not found" });
+    }
+
+    res.json({ message: "chat deleted successfully." });
+  } catch (err) {
+    console.error("Delete chat error:", err);
+    res.status(500).json({ message: "Error deleting chat." });
+  }
+});
+
 
 export default router;

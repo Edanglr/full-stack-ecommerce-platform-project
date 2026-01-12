@@ -1,14 +1,11 @@
 
 // frontend/src/App.js
-
 import React, { useState, useEffect } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./App.css";
 
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { CartProvider } from "./context/CartContext";
-
-// component imports
 import PaymentMethodsPage from "./components/PaymentMethodsPage";
 import ReturnsPage from "./components/ReturnsPage";
 import SettingsPage from "./components/SettingsPage";
@@ -44,6 +41,9 @@ import CustomerChat from "./components/chat/CustomerChat";
 import AdminInvoicesPage from "./components/AdminInvoicesPage";
 import SalesAnalyticsPage from "./components/SalesAnalyticsPage";
 
+
+
+
 console.log("SiteHeader:", SiteHeader);
 console.log("HeroVideo:", HeroVideo);
 console.log("ProductGrid:", ProductGrid);
@@ -61,12 +61,7 @@ function HomePage({ searchTerm }) {
   );
 }
 
-/**
- * Route Guard:
- * - user yoksa -> /login
- * - role uymuyorsa -> / (home)
- * - manager (legacy) her şeye girer
- */
+
 function RequireRole({ user, roles, children }) {
   if (!user) return <Navigate to="/login" replace />;
 
@@ -88,6 +83,8 @@ function RequireAuth({ user, children }) {
 function App() {
   const [user, setUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [hasNewSupportMessage, setHasNewSupportMessage] = useState(false);
+  
 
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
@@ -99,7 +96,7 @@ function App() {
       }
     }
   }, []);
-
+  
   const handleLogin = (userData, token) => {
     setUser(userData);
     if (token) localStorage.setItem("token", token);
@@ -111,10 +108,9 @@ function App() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
   };
-
+  
   return (
     <CartProvider>
-      <Router>
         <div className="App">
           {/* HEADER */}
           <SiteHeader
@@ -122,6 +118,7 @@ function App() {
             onLogout={handleLogout}
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
+            hasNewSupportMessage={hasNewSupportMessage}
           />
 
           {/* ROUTES */}
@@ -197,7 +194,10 @@ function App() {
               path="/admin/chats"
               element={
                 <RequireRole user={user} roles={["supportAgent"]}>
-                  <AdminLiveChatPage user={user} />
+                  <AdminLiveChatPage
+                    user={user}
+                    setHasNewSupportMessage={setHasNewSupportMessage}
+                  />
                 </RequireRole>
               }
             />
@@ -284,7 +284,6 @@ function App() {
           {/* ✅ GLOBAL LIVE CHAT (Guest + Logged-in herkeste görünür) */}
           <CustomerChat user={user} />
         </div>
-      </Router>
     </CartProvider>
   );
 }
