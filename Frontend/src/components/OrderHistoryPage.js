@@ -2,6 +2,24 @@
 import React, { useEffect, useState } from "react";
 import ProfileLayout from "./ProfileLayout";
 
+// ✅ 30-day return window helper
+function isWithinReturnWindow(orderCreatedAt, days = 30) {
+  if (!orderCreatedAt) return false;
+  const created = new Date(orderCreatedAt);
+  if (Number.isNaN(created.getTime())) return false;
+  const now = new Date();
+  const diffDays = (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays <= Number(days);
+}
+
+function daysSince(orderCreatedAt) {
+  if (!orderCreatedAt) return null;
+  const created = new Date(orderCreatedAt);
+  if (Number.isNaN(created.getTime())) return null;
+  const now = new Date();
+  return Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 function OrderHistoryPage() {
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState("");
@@ -50,6 +68,19 @@ function OrderHistoryPage() {
   const handleCreateReturn = async (order, item) => {
     if (creatingReturn) return;
 
+    // ✅ UI guard: 30 days rule
+    const delivered = String(order.shippingStatus || "").toLowerCase() === "delivered";
+    const within30 = isWithinReturnWindow(order.createdAt, 30);
+
+    if (!delivered) {
+      alert("Returns are only available for delivered orders.");
+      return;
+    }
+    if (!within30) {
+      alert("Return window expired. You can only request a return within 30 days of purchase.");
+      return;
+    }
+
     const confirm = window.confirm(
       `Do you want to request a return for "${item.name}"?`
     );
@@ -92,6 +123,7 @@ function OrderHistoryPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
+        // ✅ backend will also enforce 30-day rule
         alert(data.message || "Error creating return.");
         return;
       }
@@ -241,7 +273,14 @@ function OrderHistoryPage() {
 
         {orders.map((order) => {
           const canCancel = order.shippingStatus === "Processing";
-          const canRequestReturn = order.shippingStatus === "Delivered";
+
+          // ✅ Return eligibility based on Delivered + 30 days
+          const delivered = String(order.shippingStatus || "").toLowerCase() === "delivered";
+          const within30 = isWithinReturnWindow(order.createdAt, 30);
+          const canRequestReturn = delivered && within30;
+
+          const ageDays = daysSince(order.createdAt); // for display
+
           const canShowInvoiceButton =
             order.hasInvoicePdf === true || Boolean(order.invoiceNumber);
 
@@ -265,6 +304,14 @@ function OrderHistoryPage() {
                 {order.createdAt
                   ? new Date(order.createdAt).toLocaleString()
                   : "-"}
+                {typeof ageDays === "number" ? (
+                  <>
+                    <br />
+                    <span style={{ fontSize: 12, opacity: 0.75 }}>
+                      (Purchased {ageDays} days ago)
+                    </span>
+                  </>
+                ) : null}
                 <br />
                 <strong>Status:</strong>{" "}
                 <span
@@ -288,6 +335,14 @@ function OrderHistoryPage() {
                 >
                   {order.shippingStatus || "Processing"}
                 </span>
+
+                {/* ✅ Step 4 proof message (Delivered but >30 days) */}
+                {delivered && !within30 && (
+                  <div style={{ marginTop: 6, color: "#c33", fontWeight: 700 }}>
+                    Return not available: purchased more than 30 days ago.
+                  </div>
+                )}
+
                 <br />
                 <strong>Total:</strong> {order.totalAmount} TL
                 {order.invoiceNumber ? (
@@ -428,6 +483,13 @@ function OrderHistoryPage() {
                       >
                         {item.price} TL
                       </p>
+
+                      {/* ✅ per-item proof line (nice for Product B) */}
+                      {delivered && !within30 && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: "#c33", fontWeight: 700 }}>
+                          Cannot request return for this item (purchased more than 30 days ago).
+                        </div>
+                      )}
                     </div>
 
                     <button
@@ -447,9 +509,11 @@ function OrderHistoryPage() {
                       }}
                       disabled={creatingReturn || !canRequestReturn}
                       title={
-                        canRequestReturn
-                          ? "Request a return"
-                          : "Returns are only available for delivered orders"
+                        !delivered
+                          ? "Returns are only available for delivered orders"
+                          : !within30
+                          ? "Return not available: purchased more than 30 days ago"
+                          : "Request a return"
                       }
                     >
                       {creatingReturn ? "Sending..." : "Return"}
