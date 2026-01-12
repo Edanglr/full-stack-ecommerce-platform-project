@@ -67,11 +67,7 @@ function LineChart({
 
   const scaleY = (v) => {
     if (maxV === minV) return H / 2;
-    return (
-      H -
-      padding -
-      ((v - minV) / (maxV - minV)) * (H - padding * 2)
-    );
+    return H - padding - ((v - minV) / (maxV - minV)) * (H - padding * 2);
   };
 
   const points = safe
@@ -82,11 +78,9 @@ function LineChart({
     })
     .join(" ");
 
-  const labelIdx = [
-    0,
-    Math.floor((safe.length - 1) / 2),
-    safe.length - 1,
-  ].filter((v, i, a) => a.indexOf(v) === i);
+  const labelIdx = [0, Math.floor((safe.length - 1) / 2), safe.length - 1].filter(
+    (v, i, a) => a.indexOf(v) === i
+  );
 
   return (
     <div
@@ -105,14 +99,7 @@ function LineChart({
         height={H}
         style={{ display: "block", width: "100%", overflow: "visible" }}
       >
-        <line
-          x1={padding}
-          y1={padding}
-          x2={padding}
-          y2={H - padding}
-          stroke="black"
-          strokeWidth="1"
-        />
+        <line x1={padding} y1={padding} x2={padding} y2={H - padding} stroke="black" strokeWidth="1" />
         <line
           x1={padding}
           y1={H - padding}
@@ -176,6 +163,12 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
   const [anLoading, setAnLoading] = useState(false);
   const [anError, setAnError] = useState("");
 
+  // ✅ Step 6: Mail Logs UI state
+  const [mailType, setMailType] = useState("discount"); // discount | invoice | refund-approval
+  const [mailLogs, setMailLogs] = useState([]);
+  const [mailLoading, setMailLoading] = useState(false);
+  const [mailError, setMailError] = useState("");
+
   const loadInvoices = async () => {
     try {
       setInvError("");
@@ -224,6 +217,24 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
     }
   };
 
+  // ✅ Step 6: fetch mail logs from backend
+  const loadMailLogs = async (type = "discount", limit = 30) => {
+    try {
+      setMailError("");
+      setMailLoading(true);
+      const qs = new URLSearchParams();
+      qs.set("type", type);
+      qs.set("limit", String(limit));
+      const data = await apiFetch(`/api/mail-logs?${qs.toString()}`);
+      setMailLogs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setMailLogs([]);
+      setMailError(e.message || "Mail logs fetch failed");
+    } finally {
+      setMailLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadInvoices();
     loadProducts();
@@ -249,9 +260,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
   }, [invoices]);
 
   const toggleSelected = (id) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const applyDiscount = async () => {
@@ -276,9 +285,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
         }),
       });
 
-      setDiscMsg(
-        `✅ Discount applied. Updated: ${data.updatedCount}, Notified users: ${data.notifiedUsers}`
-      );
+      setDiscMsg(`✅ Discount applied. Updated: ${data.updatedCount}, Notified users: ${data.notifiedUsers}`);
 
       await loadProducts();
       await loadInvoices();
@@ -376,6 +383,20 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
         >
           Analytics
         </button>
+
+        {/* ✅ Step 6: Mail Logs Tab */}
+        <button
+          onClick={() => setTab("mailLogs")}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #ccc",
+            background: tab === "mailLogs" ? "#eee" : "white",
+            cursor: "pointer",
+          }}
+        >
+          Mail Logs
+        </button>
       </div>
 
       <div
@@ -394,11 +415,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
         <div style={{ fontWeight: 600 }}>Date Range:</div>
         <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
           From
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
         <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
           To
@@ -409,6 +426,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
           onClick={async () => {
             if (tab === "invoices") await loadInvoices();
             if (tab === "analytics") await loadAnalytics();
+            if (tab === "mailLogs") await loadMailLogs(mailType, 30);
           }}
           style={{
             padding: "8px 12px",
@@ -505,9 +523,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
                     marginTop: "10px",
                   }}
                 >
-                  <p style={{ fontSize: "16px", color: "#666" }}>
-                    No invoices in selected range.
-                  </p>
+                  <p style={{ fontSize: "16px", color: "#666" }}>No invoices in selected range.</p>
                 </div>
               )}
             </div>
@@ -630,13 +646,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
                 </table>
 
                 {!products.length && (
-                  <div
-                    style={{
-                      padding: "40px",
-                      textAlign: "center",
-                      backgroundColor: "#f9f9f9",
-                    }}
-                  >
+                  <div style={{ padding: "40px", textAlign: "center", backgroundColor: "#f9f9f9" }}>
                     <p style={{ fontSize: "16px", color: "#666" }}>No products found.</p>
                   </div>
                 )}
@@ -650,9 +660,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
       {tab === "prices" && (
         <div>
           <h3 style={{ marginBottom: 8 }}>Set Product Prices (Manual)</h3>
-          <div style={{ opacity: 0.8, marginBottom: 10 }}>
-            Enter new prices and click "Save Prices".
-          </div>
+          <div style={{ opacity: 0.8, marginBottom: 10 }}>Enter new prices and click "Save Prices".</div>
 
           {prodLoading && (
             <div style={{ textAlign: "center", padding: "40px" }}>
@@ -756,13 +764,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
                 </table>
 
                 {!products.length && (
-                  <div
-                    style={{
-                      padding: "40px",
-                      textAlign: "center",
-                      backgroundColor: "#f9f9f9",
-                    }}
-                  >
+                  <div style={{ padding: "40px", textAlign: "center", backgroundColor: "#f9f9f9" }}>
                     <p style={{ fontSize: "16px", color: "#666" }}>No products found.</p>
                   </div>
                 )}
@@ -832,11 +834,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
                 </div>
               </div>
 
-              <LineChart
-                data={analytics.series || []}
-                valueKey="profit"
-                title="Profit by Day (Chart)"
-              />
+              <LineChart data={analytics.series || []} valueKey="profit" title="Profit by Day (Chart)" />
 
               <div style={{ overflowX: "auto", border: "1px solid #eee", borderRadius: 10 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -861,16 +859,8 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
                 </table>
 
                 {(!analytics.series || !analytics.series.length) && (
-                  <div
-                    style={{
-                      padding: "40px",
-                      textAlign: "center",
-                      backgroundColor: "#f9f9f9",
-                    }}
-                  >
-                    <p style={{ fontSize: "16px", color: "#666" }}>
-                      No analytics data in selected range.
-                    </p>
+                  <div style={{ padding: "40px", textAlign: "center", backgroundColor: "#f9f9f9" }}>
+                    <p style={{ fontSize: "16px", color: "#666" }}>No analytics data in selected range.</p>
                   </div>
                 )}
               </div>
@@ -879,6 +869,111 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
                 Note: If product cost is not set, system assumes default cost = 50% of sale price.
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* ✅ MAIL LOGS TAB (Step 6 proof) */}
+      {tab === "mailLogs" && (
+        <div>
+          <h3 style={{ marginBottom: 8 }}>Mail Logs (Step 6 Proof)</h3>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              Type
+              <select
+                value={mailType}
+                onChange={(e) => setMailType(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}
+              >
+                <option value="discount">discount</option>
+                <option value="invoice">invoice</option>
+                <option value="refund-approval">refund-approval</option>
+              </select>
+            </label>
+
+            <button
+              onClick={() => loadMailLogs(mailType, 30)}
+              disabled={mailLoading}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #ccc",
+                background: "white",
+                cursor: mailLoading ? "not-allowed" : "pointer",
+                opacity: mailLoading ? 0.6 : 1,
+              }}
+            >
+              {mailLoading ? "Loading..." : "Refresh Logs"}
+            </button>
+
+            <div style={{ opacity: 0.7, alignSelf: "center" }}>
+              Backend saves to <b>./outbox</b> and exposes via <b>/api/mail-logs</b>
+            </div>
+          </div>
+
+          {mailError && (
+            <div
+              style={{
+                padding: "12px",
+                marginBottom: "10px",
+                backgroundColor: "#fee",
+                border: "1px solid #fcc",
+                borderRadius: "8px",
+                color: "#c33",
+              }}
+            >
+              <strong>Error:</strong> {mailError}
+            </div>
+          )}
+
+          {!mailLoading && !mailError && !mailLogs.length && (
+            <div
+              style={{
+                padding: 14,
+                border: "1px solid #eee",
+                borderRadius: 10,
+                background: "white",
+                opacity: 0.8,
+              }}
+            >
+              No logs yet. Trigger an email (Discount / Invoice / Refund) then refresh.
+            </div>
+          )}
+
+          {!!mailLogs.length && (
+            <div style={{ overflowX: "auto", border: "1px solid #eee", borderRadius: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+                    <th style={{ padding: 10 }}>Time</th>
+                    <th style={{ padding: 10 }}>To</th>
+                    <th style={{ padding: 10 }}>Subject</th>
+                    <th style={{ padding: 10 }}>Used</th>
+                    <th style={{ padding: 10 }}>Return ID</th>
+                    <th style={{ padding: 10 }}>Order ID</th>
+                    <th style={{ padding: 10 }}>Discount</th>
+                    <th style={{ padding: 10 }}>File</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mailLogs.map((m) => (
+                    <tr key={m.file} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                      <td style={{ padding: 10 }}>{m.at ? new Date(m.at).toLocaleString() : ""}</td>
+                      <td style={{ padding: 10 }}>{m.to || ""}</td>
+                      <td style={{ padding: 10 }}>{m.subject || ""}</td>
+                      <td style={{ padding: 10 }}>{m.used || ""}</td>
+                      <td style={{ padding: 10 }}>{m.returnId || ""}</td>
+                      <td style={{ padding: 10 }}>{m.orderId || ""}</td>
+                      <td style={{ padding: 10 }}>
+                        {m.discountRate != null ? `${Math.round(Number(m.discountRate) * 100)}%` : ""}
+                      </td>
+                      <td style={{ padding: 10, fontFamily: "monospace", fontSize: 12 }}>{m.file || ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
