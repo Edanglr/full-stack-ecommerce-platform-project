@@ -1,4 +1,3 @@
-// backend/src/routes/categoryRoutes.js
 import express from "express";
 import Category from "../models/Category.js";
 import Product from "../models/Product.js";
@@ -17,17 +16,17 @@ function toSlug(name = "") {
 function toDisplayName(slug = "") {
   const s = String(slug || "").trim();
   if (!s) return "";
-  // "t-shirt" -> "T-shirt", "knitwear" -> "Knitwear"
+  // "t-shirt" => "T-shirt"
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**
- * GET /api/categories
- * PUBLIC: navbar da görebilsin
+ * ✅ GET /api/categories (PUBLIC)
+ * Navbar/login olmadan çalışsın.
  *
- * Returns:
+ * Response:
  *  - items: [{ name, slug }]
- *  - categories: [slug, slug, ...]  // geriye uyumluluk (AdminProductManagerPage bozulmasın)
+ *  - categories: [slug, ...]   // AdminProductManagerPage geriye uyumluluk
  */
 router.get("/", async (_req, res) => {
   try {
@@ -47,7 +46,6 @@ router.get("/", async (_req, res) => {
       .map((x) => String(x || "").trim())
       .filter(Boolean);
 
-    // Merge by slug (case-insensitive)
     const seen = new Set(savedItems.map((i) => i.slug.toLowerCase()));
     const mergedItems = [...savedItems];
 
@@ -65,7 +63,6 @@ router.get("/", async (_req, res) => {
       });
     }
 
-    // categories: just slugs (for old frontend code)
     const categories = mergedItems.map((i) => i.slug);
 
     return res.json({ items: mergedItems, categories });
@@ -76,17 +73,19 @@ router.get("/", async (_req, res) => {
 });
 
 /**
- * POST /api/categories
- * Body: { name }
- * Product manager adds a category.
+ * ✅ POST /api/categories (Product Manager only)
  */
 router.post("/", requireRole("productManager"), async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
-    if (!name) return res.status(400).json({ message: "Category name is required." });
+    if (!name) {
+      return res.status(400).json({ message: "Category name is required." });
+    }
 
     const slug = toSlug(name);
-    if (!slug) return res.status(400).json({ message: "Invalid category name." });
+    if (!slug) {
+      return res.status(400).json({ message: "Invalid category name." });
+    }
 
     const created = await Category.findOneAndUpdate(
       { slug },
