@@ -2,18 +2,31 @@ import React, { useState, useCallback, useEffect } from "react";
 import { useChatSocket } from "../../hooks/useChatSocket";
 
 function CustomerChat({ user }) {
-  // Kullanıcı bilgisini kontrol et
-  const isReady = !!user;
-  const chatId = isReady ? `chat-${user._id || user.id}` : null;
+  // Guest ID yönetimi
+  const [guestId] = useState(() => {
+    const stored = localStorage.getItem("chatGuestId");
+    if (stored) return stored;
+    const newId = `guest-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem("chatGuestId", newId);
+    return newId;
+  });
+
+  // Kullanıcı varsa onun ID'si, yoksa Guest ID kullan
+  const currentUserId = user ? (user._id || user.id) : guestId;
+  const currentUserName = user ? (user.name || "Customer") : "Guest";
+  const chatId = `chat-${currentUserId}`;
+
+  // Chat her zaman hazır (Guest de olsa)
+  const isReady = true;
 
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  
+
   // Pencere durumunu yerel depolamada sakla
   const [open, setOpen] = useState(() => {
     const savedState = localStorage.getItem("chatWindowOpen");
-    return savedState === "true"; 
+    return savedState === "true";
   });
 
   useEffect(() => {
@@ -44,7 +57,7 @@ function CustomerChat({ user }) {
       try {
         const res = await fetch(`http://localhost:5050/api/chats/${chatId}`);
         const data = await res.json();
-        
+
         // Eğer sohbet kapalıysa müşteriye geçmişi gösterme
         if (data.status === "closed") {
           setMessages([]);
@@ -60,12 +73,12 @@ function CustomerChat({ user }) {
 
   const handleSend = () => {
     if (!text.trim() || !isReady) return;
-    
+
     sendMessage({
       chatId,
-      senderId: user._id || user.id,
+      senderId: currentUserId,
       senderRole: "customer",
-      senderName: user.name || "Customer",
+      senderName: currentUserName,
       text,
     });
     setText("");
@@ -83,24 +96,24 @@ function CustomerChat({ user }) {
       const data = await res.json();
       sendMessage({
         chatId,
-        senderId: user._id || user.id,
+        senderId: currentUserId,
         senderRole: "customer",
-        senderName: user.name || "Customer",
+        senderName: currentUserName,
         text: `Sent a file: ${data.fileName}`,
-        fileUrl: data.fileUrl, 
+        fileUrl: data.fileUrl,
       });
     } catch (err) {
       console.error("Upload error:", err);
     } finally { setIsUploading(false); }
   };
-  
+
   const handleEndChat = async () => {
     if (!window.confirm("End chat? History will be hidden from your view.")) return;
     try {
       const response = await fetch(`http://localhost:5050/api/chats/${chatId}/close`, { method: "PUT" });
       if (response.ok) {
-        setMessages([]); 
-        setOpen(false);  
+        setMessages([]);
+        setOpen(false);
       }
     } catch (err) { console.error("EndChat error:", err); }
   };
@@ -167,14 +180,8 @@ function CustomerChat({ user }) {
 
       {/* Floating Button (💬) - Her zaman görünür olmalı */}
       {!open && (
-        <button 
-          onClick={() => {
-            if (!isReady) {
-              alert("Please login to use live support.");
-            } else {
-              setOpen(true);
-            }
-          }} 
+        <button
+          onClick={() => setOpen(true)}
           style={styles.floatingButton}
         >
           💬
@@ -185,19 +192,19 @@ function CustomerChat({ user }) {
 }
 
 const styles = {
-  floatingButton: { 
-    position: "fixed", 
-    bottom: 20, 
-    right: 20, 
-    width: 60, 
-    height: 60, 
-    borderRadius: "50%", 
-    background: "#000", 
-    color: "#fff", 
-    fontSize: 26, 
-    border: "none", 
-    cursor: "pointer", 
-    zIndex: 9999 
+  floatingButton: {
+    position: "fixed",
+    bottom: 20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: "50%",
+    background: "#000",
+    color: "#fff",
+    fontSize: 26,
+    border: "none",
+    cursor: "pointer",
+    zIndex: 9999
   },
   chatWindow: { position: "fixed", bottom: 90, right: 20, width: 320, height: 420, background: "#fff", borderRadius: 12, boxShadow: "0 6px 18px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column", zIndex: 9999, overflow: "hidden" },
   header: { padding: "10px 15px", background: "#000", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" },
