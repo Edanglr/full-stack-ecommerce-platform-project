@@ -7,17 +7,19 @@ import User from "../models/User.js";
 import DiscountCampaign from "../models/DiscountCampaign.js";
 import ReturnRequest from "../models/returnModel.js";
 import { requireSalesManager } from "../middleware/auth.js";
-import { sendDiscountEmail } from "../utils/email.js";
+import { sendDiscountEmail, sendRefundApprovalEmail } from "../utils/email.js";
 
 const router = express.Router();
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-
 /**
  * -------------------------
- * Date helpers
+ * Helpers
  * -------------------------
  */
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+const ALLOWED_SIZES = ["XS", "S", "M", "L", "XL"];
+
 function parseDateRange(from, to) {
   let fromDate = null;
   let toDate = null;
@@ -49,73 +51,6 @@ function buildCreatedAtFilter(from, to) {
   return Object.keys(filter).length ? { createdAt: filter } : {};
 }
 
-/**
- * -------------------------
- * Wishlist notification
- * -------------------------
- */
-async function notifyWishlistUsers(productIds, products, discountRate) {
-  const favs = await Favorite.find({ product: { $in: productIds } })
-    .select("user product")
-    .lean();
-
-  const userIds = [...new Set((favs || []).map((f) => String(f.user)))];
-  if (userIds.length === 0) return 0;
-
-  const users = await User.find({ _id: { $in: userIds } })
-    .select("email name")
-    .lean();
-
-  let notifiedCount = 0;
-  for (const u of users) {
-    if (!u.email) continue;
-    try {
-      await sendDiscountEmail(u.email, u.name || "Customer", products, discountRate);
-      notifiedCount++;
-    } catch (e) {
-      console.error(`sendDiscountEmail failed for ${u.email}:`, e.message);
-    }
-  }
-  return notifiedCount;
-}
-
-/**
- * -------------------------
- * Return helpers (FINAL)
- * Product schema: sizes is OBJECT {XS,S,M,L,XL}
- * -------------------------
- */
-async function restoreStockForReturn(returnReq) {
-  const product = await Product.findById(returnReq.product);
-  if (!product) return { restored: false, message: "Product not found" };
-
-  const size = String(returnReq.size || "").toUpperCase().trim();
-  const qty = Number(returnReq.quantity || 1);
-
-  if (!size || !(qty > 0)) {
-    return { restored: false, message: "Invalid size/quantity" };
-  }
-
-  product.sizes = product.sizes || {};
-  const before = Number(product.sizes?.[size] ?? 0);
-  product.sizes[size] = before + qty;
-
-  product.markModified("sizes");
-  await product.save();
-
-  return { restored: true, size, before, after: product.sizes[size] };
-}
-
-async function processPaymentRefundMock(order, amount) {
-  const tx = order?.paymentDetails?.transactionId || "";
-  return {
-    provider: "mock",
-    transactionId: tx,
-    refundedAmount: round2(amount),
-    refundId: `mock_ref_${Date.now()}`,
-  };
-}
-
 function pushReturnHistory(rr, status, note, byUserId) {
   rr.statusHistory = rr.statusHistory || [];
   rr.statusHistory.push({
@@ -126,10 +61,84 @@ function pushReturnHistory(rr, status, note, byUserId) {
   });
 }
 
+async function notifyWishlistUsers(productIds, products, discountRate) {
+  const favs = await Favorite.find({ product: { $in: productIds } })
+    .select("user product")
+    .lean();
+
+  const userIds = [...new Set(favs.map((f) => String(f.user)))];
+  const users = await User.find({ _id: { $in: userIds } })
+    .select("email name")
+    .lean();
+
+  let notifiedCount = 0;
+
+  for (const u of users) {
+    if (!u.email) continue;
+    try {
+      await sendDiscountEmail(u.email, u.name || "Customer", products, discountRate);
+      notifiedCount++;
+    } catch (emailErr) {
+      console.error(`Failed to send discount email to ${u.email}:`, emailErr);
+    }
+  }
+
+  return notifiedCount;
+}
+
+/**
+ * ✅ Stock restore (FINAL)
+ * Product schema: sizes is an OBJECT: { XS, S, M, L, XL }
+ */
+async function restoreStockForReturn(returnReq) {
+  const product = await Product.findById(returnReq.product);
+  if (!product) return { restored: false, message: "Product not found" };
+
+  const size = String(returnReq.size || "").toUpperCase().trim();
+  const qty = Number(returnReq.quantity || 1);
+
+  if (!size || !ALLOWED_SIZES.includes(size)) {
+    return { restored: false, message: `Invalid/unknown size: ${size || "(empty)"}` };
+  }
+  if (!(qty > 0)) return { restored: false, message: "Invalid quantity" };
+
+  const before = Number(product.sizes?.[size] ?? 0);
+  product.sizes[size] = before + qty;
+
+  product.markModified("sizes");
+  await product.save();
+
+  return { restored: true, size, before, after: product.sizes[size] };
+}
+
+/**
+ * ✅ Mock refund provider
+ * (Gerçek provider bağlayacaksan burada değiştireceksin)
+ */
+async function processPaymentRefundMock(order, amount) {
+  const tx = order?.paymentDetails?.transactionId || "";
+  return {
+    provider: "mock",
+    transactionId: tx,
+    refundedAmount: round2(amount),
+    refundId: `mock_ref_${Date.now()}`,
+  };
+}
+
+function findMatchingOrderItem(order, rr) {
+  const pid = String(rr.product);
+  const size = String(rr.size || "").toUpperCase().trim();
+
+  return (order.items || []).find((x) => {
+    const sameProd = String(x.productId) === pid;
+    const sameSize = !size ? true : String(x.size || "").toUpperCase().trim() === size;
+    return sameProd && sameSize;
+  });
+}
+
 /**
  * -------------------------
  * 1) INVOICES
- * GET /api/sales/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
  * -------------------------
  */
 router.get("/invoices", requireSalesManager, async (req, res) => {
@@ -160,7 +169,6 @@ router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
     if (!name || typeof name !== "string") {
       return res.status(400).json({ message: "name is required" });
     }
-
     if (!Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ message: "productIds array required" });
     }
@@ -175,7 +183,9 @@ router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
     if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) {
       return res.status(400).json({ message: "startDate and endDate must be valid dates" });
     }
-    if (e < s) return res.status(400).json({ message: "endDate must be after startDate" });
+    if (e < s) {
+      return res.status(400).json({ message: "endDate must be after startDate" });
+    }
 
     const products = await Product.find({ _id: { $in: productIds } });
     if (!products || products.length === 0) {
@@ -196,6 +206,7 @@ router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
     const shouldApplyNow = now >= s && now <= e;
 
     let updatedCount = 0;
+
     if (shouldApplyNow) {
       for (const p of products) {
         const currentPrice = Number(p.price);
@@ -263,6 +274,7 @@ router.patch("/discount-campaigns/:id/deactivate", requireSalesManager, async (r
 
     c.isActive = false;
     await c.save();
+
     return res.json({ message: "Campaign deactivated", campaign: c });
   } catch (e) {
     console.error("DEACTIVATE CAMPAIGN ERROR:", e);
@@ -289,9 +301,12 @@ router.post("/discount", requireSalesManager, async (req, res) => {
     }
 
     const products = await Product.find({ _id: { $in: productIds } });
-    if (products.length === 0) return res.status(404).json({ message: "No products found" });
+    if (products.length === 0) {
+      return res.status(404).json({ message: "No products found" });
+    }
 
     let updatedCount = 0;
+
     for (const p of products) {
       const currentPrice = Number(p.price);
 
@@ -325,12 +340,15 @@ router.post("/discount", requireSalesManager, async (req, res) => {
 router.post("/discount/all", requireSalesManager, async (req, res) => {
   try {
     const rate = Number(req.body.rate || 0);
+
     if (Number.isNaN(rate) || rate < 0 || rate > 90) {
       return res.status(400).json({ message: "Invalid discount rate (0-90)." });
     }
 
     const products = await Product.find({});
-    if (!products || products.length === 0) return res.json({ message: "No products found." });
+    if (!products || products.length === 0) {
+      return res.json({ message: "No products found." });
+    }
 
     const discountRate = rate / 100;
     let updatedCount = 0;
@@ -360,17 +378,15 @@ router.post("/discount/all", requireSalesManager, async (req, res) => {
       updatedCount,
       notifiedUsers,
     });
-  } catch (e) {
-    console.error("DISCOUNT ALL ERROR:", e);
-    return res.status(500).json({ message: "Server error: " + e.message });
+  } catch (err) {
+    console.error("DISCOUNT ALL ERROR:", err);
+    return res.status(500).json({ message: "Server error: " + err.message });
   }
 });
 
 /**
  * -------------------------
- * 4) PRICES (manual)
- * PUT /api/sales/prices
- * body: { updates: [{ productId, newPrice }] }
+ * 5) PRICES (Manual)
  * -------------------------
  */
 router.put("/prices", requireSalesManager, async (req, res) => {
@@ -381,9 +397,11 @@ router.put("/prices", requireSalesManager, async (req, res) => {
     }
 
     let updatedCount = 0;
+
     for (const u of updates) {
       const productId = u?.productId;
       const newPrice = Number(u?.newPrice);
+
       if (!productId || !(newPrice > 0)) continue;
 
       const p = await Product.findById(productId);
@@ -407,8 +425,7 @@ router.put("/prices", requireSalesManager, async (req, res) => {
 
 /**
  * -------------------------
- * 5) ANALYTICS
- * GET /api/sales/analytics?from&to
+ * 6) ANALYTICS
  * -------------------------
  */
 router.get("/analytics", requireSalesManager, async (req, res) => {
@@ -417,10 +434,11 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
     const dateFilter = buildCreatedAtFilter(from, to);
 
     const orders = await Order.find(dateFilter)
-      .populate("items.productId", "cost")
+      .populate("items.productId", "cost price basePrice")
       .sort({ createdAt: 1 });
 
     const { fromDate, toDate } = parseDateRange(from, to);
+
     const timeCond = {};
     if (fromDate) timeCond.$gte = fromDate;
     if (toDate) timeCond.$lte = toDate;
@@ -462,12 +480,14 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
       refundByDay.set(dayKey, (refundByDay.get(dayKey) || 0) + amt);
     }
 
-    for (const o of orders || []) {
-      const ship = String(o.shippingStatus || "").toLowerCase();
-      if (ship === "cancelled") continue;
+    for (const o of orders) {
+      if (/cancelled/i.test(String(o.shippingStatus || ""))) continue;
 
       const dayKey = new Date(o.createdAt).toISOString().slice(0, 10);
-      if (!byDay.has(dayKey)) byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
+
+      if (!byDay.has(dayKey)) {
+        byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
+      }
 
       for (const it of o.items || []) {
         const salePrice = Number(it.unitPriceAtPurchase ?? it.price ?? 0);
@@ -481,7 +501,7 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
         } else if (it.productId?.cost != null && !Number.isNaN(Number(it.productId.cost))) {
           unitCost = Number(it.productId.cost);
         } else {
-          unitCost = salePrice * 0.5; // fallback
+          unitCost = salePrice * 0.5;
         }
 
         const lineCost = unitCost * qty;
@@ -495,7 +515,9 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
     }
 
     for (const [dayKey, amt] of refundByDay.entries()) {
-      if (!byDay.has(dayKey)) byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
+      if (!byDay.has(dayKey)) {
+        byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
+      }
       byDay.get(dayKey).refunds += amt;
     }
 
@@ -530,9 +552,9 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
 });
 
 /**
- * -------------------------
- * 6) REVENUE & PROFIT APIs
- * -------------------------
+ * =========================================================
+ * SCRUM-95: Revenue & Profit APIs
+ * =========================================================
  */
 async function computeRevenueCostRefunds(from, to) {
   const dateFilter = buildCreatedAtFilter(from, to);
@@ -542,6 +564,7 @@ async function computeRevenueCostRefunds(from, to) {
     .sort({ createdAt: 1 });
 
   const { fromDate, toDate } = parseDateRange(from, to);
+
   const timeCond = {};
   if (fromDate) timeCond.$gte = fromDate;
   if (toDate) timeCond.$lte = toDate;
@@ -562,18 +585,19 @@ async function computeRevenueCostRefunds(from, to) {
     status: { $in: ["Refunded", "Completed"] },
     ...returnTimeFilter,
   })
-    .select("refundedAmount")
+    .select("refundedAmount refundedAt processedAt updatedAt createdAt")
     .lean();
 
   let revenue = 0;
   let cost = 0;
   let refunds = 0;
 
-  for (const r of returns || []) refunds += Number(r.refundedAmount || 0);
+  for (const r of returns || []) {
+    refunds += Number(r.refundedAmount || 0);
+  }
 
   for (const o of orders || []) {
-    const ship = String(o.shippingStatus || "").toLowerCase();
-    if (ship === "cancelled") continue;
+    if (/cancelled/i.test(String(o.shippingStatus || ""))) continue;
 
     for (const it of o.items || []) {
       const salePrice = Number(it.unitPriceAtPurchase ?? it.price ?? 0);
@@ -588,6 +612,7 @@ async function computeRevenueCostRefunds(from, to) {
       } else {
         unitCost = salePrice * 0.5;
       }
+
       cost += unitCost * qty;
     }
   }
@@ -639,9 +664,10 @@ router.get("/profit", requireSalesManager, async (req, res) => {
 });
 
 /**
- * -------------------------
- * 7) RETURNS workflow for Sales Manager
- * -------------------------
+ * =========================================================
+ * SCRUM-98: Refund Workflow (Sales Manager)
+ * Endpoints under: /api/sales/returns...
+ * =========================================================
  */
 router.get("/returns", requireSalesManager, async (req, res) => {
   try {
@@ -670,7 +696,6 @@ router.get("/returns/:id", requireSalesManager, async (req, res) => {
       .populate("user", "name email")
       .populate("order", "trackingCode paymentStatus paymentDetails invoiceNumber createdAt items")
       .populate("product", "name price");
-
     if (!rr) return res.status(404).json({ message: "Return request not found" });
     return res.json(rr);
   } catch (e) {
@@ -750,19 +775,23 @@ router.patch("/returns/:id/refund", requireSalesManager, async (req, res) => {
     const order = await Order.findById(rr.order);
     if (!order) return res.status(404).json({ message: "Order not found for this return" });
 
+    // amount
     let amount = Number(refundedAmount);
     if (!(amount > 0)) {
-      const productIdStr = String(rr.product);
-      const it = (order.items || []).find((x) => String(x.productId) === productIdStr);
+      const it = findMatchingOrderItem(order, rr);
       const unit = Number(it?.unitPriceAtPurchase ?? it?.price ?? 0);
       const qty = Number(rr.quantity || it?.quantity || 1);
       amount = unit * qty;
     }
     amount = round2(amount);
 
+    // 1) STOCK RESTORE
     const stockResult = await restoreStockForReturn(rr);
+
+    // 2) PAYMENT REFUND (mock)
     const refundResult = await processPaymentRefundMock(order, amount);
 
+    // 3) Update ReturnRequest
     rr.status = "Refunded";
     rr.refundedAmount = amount;
     rr.refundedAt = new Date();
@@ -771,12 +800,13 @@ router.patch("/returns/:id/refund", requireSalesManager, async (req, res) => {
     pushReturnHistory(
       rr,
       "Refunded",
-      String(note || `Refunded ${amount}. Stock restore: ${stockResult.restored ? "OK" : "SKIP"}`),
+      String(note || `Refunded ${amount}. Stock: ${stockResult.restored ? "OK" : "SKIP"}`),
       req.user?.id
     );
 
     await rr.save();
 
+    // 4) Update Order (minimal)
     order.paymentStatus = "Refunded";
     await order.save();
 
@@ -819,11 +849,11 @@ router.patch("/returns/:id/complete", requireSalesManager, async (req, res) => {
 router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
   try {
     const { note, refundNow, refundedAmount } = req.body || {};
-
-    const rr = await ReturnRequest.findById(req.params.id);
+    const rr = await ReturnRequest.findById(req.params.id).populate("user", "name email");
     if (!rr) return res.status(404).json({ message: "Return request not found" });
 
     const current = rr.status;
+
     if (["Refunded", "Completed"].includes(current)) {
       return res.status(200).json({ message: "Already processed", returnRequest: rr });
     }
@@ -838,15 +868,30 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
     await rr.save();
 
     const doRefund = refundNow == null ? true : Boolean(refundNow);
-    if (!doRefund) return res.json({ message: "Return approved", returnRequest: rr });
+    if (!doRefund) {
+      // Optional email on approve-only
+      if (rr.user?.email) {
+        try {
+          await sendRefundApprovalEmail({
+            to: rr.user.email,
+            name: rr.user.name || "Customer",
+            returnId: String(rr._id),
+            orderId: String(rr.order),
+            productName: "Product",
+            quantity: rr.quantity || 1,
+            refundedAmount: 0,
+          });
+        } catch {}
+      }
+      return res.json({ message: "Return approved", returnRequest: rr });
+    }
 
     const order = await Order.findById(rr.order);
     if (!order) return res.status(404).json({ message: "Order not found for this return" });
 
     let amount = Number(refundedAmount);
     if (!(amount > 0)) {
-      const productIdStr = String(rr.product);
-      const it = (order.items || []).find((x) => String(x.productId) === productIdStr);
+      const it = findMatchingOrderItem(order, rr);
       const unit = Number(it?.unitPriceAtPurchase ?? it?.price ?? 0);
       const qty = Number(rr.quantity || it?.quantity || 1);
       amount = unit * qty;
@@ -864,8 +909,10 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
     pushReturnHistory(
       rr,
       "Refunded",
-      String(`Approved & Refunded ${amount}. Stock: ${stockResult.restored ? "OK" : "SKIP"}. ${note ? `Note: ${note}` : ""}`)
-        .slice(0, 500),
+      String(`Approved & Refunded ${amount}. Stock: ${stockResult.restored ? "OK" : "SKIP"}. ${note || ""}`).slice(
+        0,
+        500
+      ),
       req.user?.id
     );
 
@@ -873,6 +920,23 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
 
     order.paymentStatus = "Refunded";
     await order.save();
+
+    // Email (refund info)
+    if (rr.user?.email) {
+      try {
+        await sendRefundApprovalEmail({
+          to: rr.user.email,
+          name: rr.user.name || "Customer",
+          returnId: String(rr._id),
+          orderId: String(order._id),
+          productName: "Product",
+          quantity: rr.quantity || 1,
+          refundedAmount: amount,
+        });
+      } catch (mailErr) {
+        console.error("Refund email error:", mailErr);
+      }
+    }
 
     return res.json({
       message: "Return approved + refunded (mock provider)",
