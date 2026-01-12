@@ -22,6 +22,7 @@ import chatSocket from "./src/socket/chatSocket.js";
 import salesManagerRoutes from "./src/routes/salesManagerRoutes.js";
 import categoryRoutes from "./src/routes/categoryRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
+import mailLogRoutes from "./routes/mailLogRoutes.js";
 
 // ✅ ADMIN ROUTES (senin attıkların)
 import adminOrderRoutes from "./src/routes/adminOrderRoutes.js";
@@ -65,6 +66,7 @@ app.use("/api/chats", chatRoutes);
 app.use("/api/sales", salesManagerRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/mail-logs", mailLogRoutes);
 
 // ✅ ADMIN ROUTES MOUNT
 app.use("/api/admin/orders", adminOrderRoutes);
