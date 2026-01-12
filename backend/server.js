@@ -21,9 +21,11 @@ import chatRoutes from "./src/routes/chatRoutes.js";
 import chatSocket from "./src/socket/chatSocket.js";
 import salesManagerRoutes from "./src/routes/salesManagerRoutes.js";
 import categoryRoutes from "./src/routes/categoryRoutes.js";
-
-// ✅ PAYMENT ROUTES EKLENDI
 import paymentRoutes from "./src/routes/paymentRoutes.js";
+
+// ✅ ADMIN ROUTES (senin attıkların)
+import adminOrderRoutes from "./src/routes/adminOrderRoutes.js";
+import adminProductRoutes from "./src/routes/adminProductRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,9 +64,11 @@ app.use("/api/returns", returnRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/sales", salesManagerRoutes);
 app.use("/api/categories", categoryRoutes);
-
-// ✅ PAYMENT ROUTES
 app.use("/api/payments", paymentRoutes);
+
+// ✅ ADMIN ROUTES MOUNT
+app.use("/api/admin/orders", adminOrderRoutes);
+app.use("/api/admin/products", adminProductRoutes);
 
 // ==================== SOCKET.IO ====================
 const io = new Server(server, {
@@ -89,9 +93,12 @@ const start = async () => {
       console.log(`   - /api/auth`);
       console.log(`   - /api/products`);
       console.log(`   - /api/orders`);
+      console.log(`   - /api/returns`);
       console.log(`   - /api/payments ✅`);
       console.log(`   - /api/chats`);
       console.log(`   - /api/categories`);
+      console.log(`   - /api/admin/orders ✅`);
+      console.log(`   - /api/admin/products ✅`);
     });
   } catch (err) {
     console.error("❌ MongoDB connection error:", err.message);
