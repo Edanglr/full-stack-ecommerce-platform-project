@@ -99,7 +99,14 @@ function LineChart({
         height={H}
         style={{ display: "block", width: "100%", overflow: "visible" }}
       >
-        <line x1={padding} y1={padding} x2={padding} y2={H - padding} stroke="black" strokeWidth="1" />
+        <line
+          x1={padding}
+          y1={padding}
+          x2={padding}
+          y2={H - padding}
+          stroke="black"
+          strokeWidth="1"
+        />
         <line
           x1={padding}
           y1={H - padding}
@@ -248,6 +255,22 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
     }
   }, []);
 
+  // ✅ QoL: Mail Logs sekmesine girince otomatik yükle (Step 6 kanıt için güzel)
+  useEffect(() => {
+    if (tab === "mailLogs") {
+      loadMailLogs(mailType, 30);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  // ✅ QoL: Mail type değişince de otomatik yenile (sekme açıksa)
+  useEffect(() => {
+    if (tab === "mailLogs") {
+      loadMailLogs(mailType, 30);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mailType]);
+
   const rows = useMemo(() => {
     return (invoices || []).map((o) => ({
       invoiceId: o._id,
@@ -285,7 +308,9 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
         }),
       });
 
-      setDiscMsg(`✅ Discount applied. Updated: ${data.updatedCount}, Notified users: ${data.notifiedUsers}`);
+      setDiscMsg(
+        `✅ Discount applied. Updated: ${data.updatedCount}, Notified users: ${data.notifiedUsers}`
+      );
 
       await loadProducts();
       await loadInvoices();
@@ -912,6 +937,15 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
             </div>
           </div>
 
+          {mailLoading && (
+            <div style={{ textAlign: "center", padding: "20px" }}>
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p style={{ marginTop: "10px" }}>Loading mail logs...</p>
+            </div>
+          )}
+
           {mailError && (
             <div
               style={{
@@ -941,7 +975,7 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
             </div>
           )}
 
-          {!!mailLogs.length && (
+          {!!mailLogs.length && !mailLoading && (
             <div style={{ overflowX: "auto", border: "1px solid #eee", borderRadius: 10 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -959,16 +993,22 @@ export default function AdminOrdersPage({ initialTab = "invoices" }) {
                 <tbody>
                   {mailLogs.map((m) => (
                     <tr key={m.file} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                      <td style={{ padding: 10 }}>{m.at ? new Date(m.at).toLocaleString() : ""}</td>
+                      <td style={{ padding: 10 }}>
+                        {m.at ? new Date(m.at).toLocaleString() : ""}
+                      </td>
                       <td style={{ padding: 10 }}>{m.to || ""}</td>
                       <td style={{ padding: 10 }}>{m.subject || ""}</td>
                       <td style={{ padding: 10 }}>{m.used || ""}</td>
                       <td style={{ padding: 10 }}>{m.returnId || ""}</td>
                       <td style={{ padding: 10 }}>{m.orderId || ""}</td>
                       <td style={{ padding: 10 }}>
-                        {m.discountRate != null ? `${Math.round(Number(m.discountRate) * 100)}%` : ""}
+                        {m.discountRate != null
+                          ? `${Math.round(Number(m.discountRate) * 100)}%`
+                          : ""}
                       </td>
-                      <td style={{ padding: 10, fontFamily: "monospace", fontSize: 12 }}>{m.file || ""}</td>
+                      <td style={{ padding: 10, fontFamily: "monospace", fontSize: 12 }}>
+                        {m.file || ""}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
