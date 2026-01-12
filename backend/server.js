@@ -22,7 +22,7 @@ import chatSocket from "./src/socket/chatSocket.js";
 import salesManagerRoutes from "./src/routes/salesManagerRoutes.js";
 import categoryRoutes from "./src/routes/categoryRoutes.js";
 import paymentRoutes from "./src/routes/paymentRoutes.js";
-import mailLogRoutes from "./routes/mailLogRoutes.js";
+import mailLogRoutes from "./src/routes/mailLogRoutes.js";
 
 // ✅ ADMIN ROUTES (senin attıkların)
 import adminOrderRoutes from "./src/routes/adminOrderRoutes.js";
