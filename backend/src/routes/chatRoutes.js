@@ -7,6 +7,7 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import Chat from "../models/Chat.js";
 import User from "../models/User.js";
 import Order from "../models/Order.js";
+import Favorite from "../models/Favorite.js";
 
 const router = express.Router();
 
@@ -166,7 +167,17 @@ router.get(
         .lean();
 
       console.log(`✅ User found: ${user.name}, Orders: ${orders.length}`);
-      res.json({ user, orders: orders || [] });
+
+      // Favorites (Wishlist) verisini çek
+      const favorites = await Favorite.find({ user: customerId })
+        .populate("product")
+        .lean();
+
+      res.json({
+        user,
+        orders: orders || [],
+        favorites: favorites || [] // Wishlist verisini ekle
+      });
 
     } catch (err) {
       console.error("❌ User details error:", err);
