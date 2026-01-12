@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Navbar, Nav, NavDropdown, Container } from "react-bootstrap";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
@@ -10,7 +10,43 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const closeTimeout = useRef(null);
 
-  const categories = ["Sweatshirt", "T-shirt", "Short", "Jeans", "Knitwear"];
+  // ✅ FIX: categories artık backend'den gelecek
+  const [categories, setCategories] = useState([]); // [{name, slug}] veya string list fallback
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch("http://localhost:5050/api/categories");
+        const data = await res.json();
+
+        if (!res.ok) return;
+
+        // Yeni format: { items: [{name, slug}], categories: [...] }
+        if (Array.isArray(data.items)) {
+          setCategories(data.items);
+          return;
+        }
+
+        // Eski format: { categories: ["sweatshirt", ...] }
+        if (Array.isArray(data.categories)) {
+          setCategories(
+            data.categories.map((slug) => ({
+              slug,
+              name: slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : slug,
+            }))
+          );
+          return;
+        }
+
+        setCategories([]);
+      } catch (err) {
+        console.error("SiteHeader categories fetch error:", err);
+        setCategories([]);
+      }
+    };
+
+    fetchCategories();
+  }, []);
 
   const handleLogoutClick = () => {
     if (onLogout) onLogout();
@@ -91,17 +127,43 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
               }}
             />
 
-            {/* CATEGORIES DROPDOWN */}
+            {/* ✅ CATEGORIES DROPDOWN (dynamic) */}
             <NavDropdown title="Categories" id="categories-dropdown">
-              {categories.map((category) => (
-                <NavDropdown.Item
-                  key={category}
-                  as={Link}
-                  to={`/category/${category.toLowerCase().replace(" ", "-")}`}
-                >
-                  {category}
-                </NavDropdown.Item>
-              ))}
+              <NavDropdown.Item as={Link} to="/category/all">
+                All
+              </NavDropdown.Item>
+
+              <NavDropdown.Divider />
+
+              {categories.length === 0 ? (
+                <NavDropdown.Item disabled>No categories</NavDropdown.Item>
+              ) : (
+                categories.map((c) => {
+                  // c: {name, slug}
+                  const slug =
+                    typeof c === "string"
+                      ? c.toLowerCase().replace(/\s+/g, "-")
+                      : String(c.slug || "")
+                          .toLowerCase()
+                          .trim()
+                          .replace(/\s+/g, "-");
+
+                  const name =
+                    typeof c === "string"
+                      ? c
+                      : String(c.name || c.slug || "").trim();
+
+                  return (
+                    <NavDropdown.Item
+                      key={slug || name}
+                      as={Link}
+                      to={`/category/${encodeURIComponent(slug)}`}
+                    >
+                      {name}
+                    </NavDropdown.Item>
+                  );
+                })
+              )}
             </NavDropdown>
 
             {/* PRODUCT MANAGER LINKS */}
@@ -122,21 +184,20 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
                 <Nav.Link as={Link} to="/admin/orders" className="ms-3">
                   Manage Orders
                 </Nav.Link>
-            
+
                 <Nav.Link as={Link} to="/admin/returns" className="ms-3">
                   Manage Returns
                 </Nav.Link>
-            
+
                 <Nav.Link as={Link} to="/admin/invoices" className="ms-3">
                   Invoices
                 </Nav.Link>
-            
+
                 <Nav.Link as={Link} to="/admin/analytics" className="ms-3">
                   Analytics
                 </Nav.Link>
               </>
             )}
-
 
             {/* SUPPORT AGENT LINKS */}
             {user && isSupportAgent && (
@@ -288,4 +349,3 @@ function SiteHeader({ user, onLogout, searchTerm, setSearchTerm }) {
 }
 
 export default SiteHeader;
-
