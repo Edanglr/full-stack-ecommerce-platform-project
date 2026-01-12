@@ -52,16 +52,24 @@ function badgeStyle(status) {
   return { background: "#eee", color: "#111" };
 }
 
+function formatMoneyTL(r) {
+  const amt =
+    typeof r?.refundAmount === "number"
+      ? r.refundAmount
+      : typeof r?.refundedAmount === "number"
+      ? r.refundedAmount
+      : null;
+
+  return typeof amt === "number" ? amt.toFixed(2) : "-";
+}
+
 export default function AdminReturnsPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
-
   const [returns, setReturns] = useState([]);
-
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
-
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
 
@@ -71,11 +79,9 @@ export default function AdminReturnsPage() {
       setErr("");
       setMsg("");
       setLoading(true);
-
       const st = statusToLoad ?? "all";
       const qs = st && st !== "all" ? `?status=${encodeURIComponent(st)}` : "";
       const data = await apiFetch(`/api/sales/returns${qs}`);
-
       setReturns(Array.isArray(data) ? data : []);
     } catch (e) {
       setReturns([]);
@@ -95,7 +101,6 @@ export default function AdminReturnsPage() {
 
   const filtered = useMemo(() => {
     const q = (search || "").trim().toLowerCase();
-
     return (returns || []).filter((r) => {
       if (statusFilter !== "all" && String(r.status) !== String(statusFilter)) return false;
       if (!q) return true;
@@ -123,10 +128,7 @@ export default function AdminReturnsPage() {
   const syncActiveFromFreshList = useCallback(
     async (returnIdToSync) => {
       if (!returnIdToSync) return;
-      const st =
-        statusFilter && statusFilter !== "all"
-          ? `?status=${encodeURIComponent(statusFilter)}`
-          : "";
+      const st = statusFilter && statusFilter !== "all" ? `?status=${encodeURIComponent(statusFilter)}` : "";
       const fresh = await apiFetch(`/api/sales/returns${st}`);
       const list = Array.isArray(fresh) ? fresh : [];
       setReturns(list);
@@ -142,10 +144,8 @@ export default function AdminReturnsPage() {
       setMsg("");
       const ok = window.confirm("Approve this return request? (No refund yet.)");
       if (!ok) return;
-
       setLoading(true);
 
-      // ✅ approve only (no refund)
       const data = await apiFetch(`/api/sales/returns/${returnId}/approve`, {
         method: "PATCH",
         body: JSON.stringify({ note: "Approved by sales manager", refundNow: false }),
@@ -164,11 +164,9 @@ export default function AdminReturnsPage() {
     try {
       setErr("");
       setMsg("");
-
       const rejectReason = window.prompt("Reject reason (optional):", "");
       const ok = window.confirm("Reject this return request?");
       if (!ok) return;
-
       setLoading(true);
 
       const data = await apiFetch(`/api/sales/returns/${returnId}/reject`, {
@@ -191,10 +189,8 @@ export default function AdminReturnsPage() {
       setMsg("");
       const ok = window.confirm("Mark as received? (Item arrived to warehouse.)");
       if (!ok) return;
-
       setLoading(true);
 
-      // ✅ FIX: backend route is "/receive" (NOT "/received")
       const data = await apiFetch(`/api/sales/returns/${returnId}/receive`, {
         method: "PATCH",
         body: JSON.stringify({ note: "Received at warehouse" }),
@@ -213,10 +209,8 @@ export default function AdminReturnsPage() {
     try {
       setErr("");
       setMsg("");
-
       const ok = window.confirm("Process refund now?");
       if (!ok) return;
-
       setLoading(true);
 
       const data = await apiFetch(`/api/sales/returns/${returnId}/refund`, {
@@ -239,7 +233,6 @@ export default function AdminReturnsPage() {
       setMsg("");
       const ok = window.confirm("Complete the return flow?");
       if (!ok) return;
-
       setLoading(true);
 
       const data = await apiFetch(`/api/sales/returns/${returnId}/complete`, {
@@ -262,44 +255,24 @@ export default function AdminReturnsPage() {
         <h2 style={{ margin: 0 }}>Return Requests (Sales Manager)</h2>
         <button
           onClick={() => loadReturns(statusFilter)}
-          disabled={loading}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #ccc",
-            background: "white",
-            cursor: loading ? "not-allowed" : "pointer",
-            fontWeight: 600,
-          }}
+          style={{ border: "1px solid #ccc", background: "white", borderRadius: 10, padding: "8px 12px", fontWeight: 700 }}
         >
-          {loading ? "Loading..." : "Refresh"}
+          Refresh
         </button>
       </div>
 
-      {err && (
-        <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "#f8d7da", color: "#721c24" }}>
+      {!!err && (
+        <div style={{ marginTop: 10, padding: 10, background: "#ffe6e6", border: "1px solid #ffb3b3", borderRadius: 10 }}>
           {err}
         </div>
       )}
-      {msg && (
-        <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "#d4edda", color: "#155724" }}>
+      {!!msg && (
+        <div style={{ marginTop: 10, padding: 10, background: "#e6ffed", border: "1px solid #b3ffcc", borderRadius: 10 }}>
           {msg}
         </div>
       )}
 
-      <div
-        style={{
-          marginTop: 14,
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 10,
-          alignItems: "center",
-          background: "white",
-          border: "1px solid #eee",
-          borderRadius: 10,
-          padding: 12,
-        }}
-      >
+      <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <div style={{ fontWeight: 700 }}>Status:</div>
           <select
@@ -419,7 +392,7 @@ export default function AdminReturnsPage() {
                   </td>
 
                   <td style={{ padding: "10px 10px", fontSize: 13 }}>
-                    {typeof r.refundedAmount === "number" ? r.refundedAmount.toFixed(2) : "-"}
+                    {formatMoneyTL(r)}
                   </td>
 
                   <td style={{ padding: "10px 10px", fontSize: 13 }}>
@@ -530,8 +503,7 @@ export default function AdminReturnsPage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            zIndex: 9999,
-            padding: 12,
+            padding: 14,
           }}
         >
           <div
@@ -573,7 +545,7 @@ export default function AdminReturnsPage() {
               <div style={{ gridColumn: "1 / -1" }}><b>Reason:</b> {active.reason || ""}</div>
 
               <div><b>Status:</b> {active.status}</div>
-              <div><b>Refunded Amount:</b> {typeof active.refundedAmount === "number" ? active.refundedAmount.toFixed(2) : "-"}</div>
+              <div><b>Refund(TL):</b> {formatMoneyTL(active)}</div>
             </div>
 
             <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
@@ -652,30 +624,6 @@ export default function AdminReturnsPage() {
               >
                 Complete
               </button>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>Status History</div>
-              <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
-                {(active.statusHistory || []).length === 0 ? (
-                  <div style={{ opacity: 0.75 }}>No history</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {(active.statusHistory || [])
-                      .slice()
-                      .reverse()
-                      .map((h, idx) => (
-                        <div key={idx} style={{ fontSize: 13 }}>
-                          <div style={{ fontWeight: 800 }}>
-                            {h.status}{" "}
-                            <span style={{ fontWeight: 500, opacity: 0.75 }}>{formatDateTime(h.at)}</span>
-                          </div>
-                          {h.note ? <div style={{ opacity: 0.85 }}>{h.note}</div> : null}
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
