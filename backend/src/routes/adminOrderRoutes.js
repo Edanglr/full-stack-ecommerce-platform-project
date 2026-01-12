@@ -1,14 +1,14 @@
 // backend/src/routes/adminOrderRoutes.js
 import express from "express";
 import Order from "../models/Order.js";
-import { requireRole } from "../middleware/auth.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
 
 // Tüm siparişleri görme:
 // - Sales Manager: finance/invoice tarafı
 // - Product Manager: delivery/ops tarafı
-router.get("/", requireRole("salesManager", "productManager"), async (_req, res) => {
+router.get("/", requireAuth, requireRole("salesManager", "productManager"), async (_req, res) => {
   try {
     const orders = await Order.find({})
       .populate("user", "name email")
