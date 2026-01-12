@@ -94,7 +94,9 @@ export default function AdminDeliveriesPage() {
       });
     });
 
-    return Object.values(map).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return Object.values(map).sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
   }, [deliveries]);
 
   const filtered = useMemo(() => {
@@ -232,7 +234,7 @@ export default function AdminDeliveriesPage() {
                 "Tracking",
                 "Customer",
                 "Address",
-                "Product ID(s)",
+                "Items (ProductId | Qty | Total)",
                 "Qty",
                 "Total",
                 "Status",
@@ -258,22 +260,29 @@ export default function AdminDeliveriesPage() {
               const totalQty = (o.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0);
               const totalPrice = (o.items || []).reduce((s, it) => s + (Number(it.totalPrice) || 0), 0);
 
-              const productIds = (o.items || [])
-                .map((it) => it.productId)
+              // ✅ Rubric için item bazında: productId + qty + totalPrice
+              const itemsDetail = (o.items || [])
+                .map((it) => {
+                  const pid = it.productId ? String(it.productId) : "";
+                  const qty = Number(it.quantity) || 0;
+                  const tp = Number(it.totalPrice) || 0;
+                  return `${pid} | qty: ${qty} | total: ${tp.toFixed(2)}`;
+                })
                 .filter(Boolean)
-                .map((id) => String(id).slice(-8))
-                .join(", ");
+                .join("\n");
 
               return (
                 <tr key={o.orderId} style={{ borderBottom: "1px solid #f2f2f2" }}>
                   <td style={{ padding: "10px 10px", fontSize: 13 }}>{formatDateTime(o.createdAt)}</td>
 
-                  <td style={{ padding: "10px 10px", fontSize: 13, fontWeight: 800 }}>
-                    {String(o.orderId).slice(-8)}
+                  {/* ✅ Full Delivery ID (rubric: display delivery ID) */}
+                  <td style={{ padding: "10px 10px", fontSize: 12, fontWeight: 800, wordBreak: "break-all" }}>
+                    {String(o.orderId)}
                   </td>
 
-                  <td style={{ padding: "10px 10px", fontSize: 13 }}>
-                    {o.customerId ? String(o.customerId).slice(-8) : ""}
+                  {/* ✅ Full Customer ID (rubric: display customer ID) */}
+                  <td style={{ padding: "10px 10px", fontSize: 12, wordBreak: "break-all" }}>
+                    {o.customerId ? String(o.customerId) : ""}
                   </td>
 
                   <td style={{ padding: "10px 10px", fontSize: 13 }}>{o.trackingCode || ""}</td>
@@ -293,7 +302,19 @@ export default function AdminDeliveriesPage() {
                     {o.deliveryAddress || ""}
                   </td>
 
-                  <td style={{ padding: "10px 10px", fontSize: 13 }}>{productIds}</td>
+                  {/* ✅ Item detail: ProductId + Qty + Total */}
+                  <td
+                    style={{
+                      padding: "10px 10px",
+                      fontSize: 12,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-all",
+                      maxWidth: 420,
+                    }}
+                  >
+                    {itemsDetail}
+                  </td>
+
                   <td style={{ padding: "10px 10px", fontSize: 13 }}>{totalQty}</td>
                   <td style={{ padding: "10px 10px", fontSize: 13 }}>{totalPrice.toFixed(2)}</td>
 
