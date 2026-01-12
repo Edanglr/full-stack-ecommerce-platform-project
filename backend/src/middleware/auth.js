@@ -32,11 +32,10 @@ export const requireAuth = async (req, res, next) => {
 const normalizeRole = (role) => role || "customer";
 
 /**
- * ✅ FIX: requireRole artık hem
- *  - requireRole("salesManager","productManager")
- *  - requireRole(["salesManager","productManager"])
- *  - requireRole() (hiç rol vermezsen) -> forbidden
- * destekler.
+ * ✅ requireRole artık şunları destekler:
+ * - requireRole("salesManager", "productManager")
+ * - requireRole(["salesManager","productManager"])
+ * - requireRole("supportAgent")
  */
 export const requireRole = (...rolesInput) => {
   const roles =
@@ -49,7 +48,8 @@ export const requireRole = (...rolesInput) => {
     (req, res, next) => {
       const role = normalizeRole(req.user?.role);
 
-      if (role === "manager") return next(); // legacy bypass
+      // legacy bypass
+      if (role === "manager") return next();
 
       if (!roles.length || !roles.includes(role)) {
         return res.status(403).json({ message: "Forbidden" });
@@ -59,7 +59,10 @@ export const requireRole = (...rolesInput) => {
   ];
 };
 
+// Convenience wrappers
 export const requireSalesManager = requireRole("salesManager");
 export const requireProductManager = requireRole("productManager");
 export const requireSupportAgent = requireRole("supportAgent");
+
+// Backward compatible "manager-like" group
 export const requireManager = requireRole("salesManager", "productManager", "supportAgent");
