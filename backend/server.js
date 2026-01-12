@@ -101,6 +101,7 @@ const start = async () => {
       console.log(`   - /api/categories`);
       console.log(`   - /api/admin/orders ✅`);
       console.log(`   - /api/admin/products ✅`);
+      console.log(' - /api/mail-logs ✅');
     });
   } catch (err) {
     console.error("❌ MongoDB connection error:", err.message);
