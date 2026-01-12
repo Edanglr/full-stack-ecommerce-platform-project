@@ -1,4 +1,3 @@
-
 // backend/src/routes/salesManagerRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
@@ -17,37 +16,8 @@ const router = express.Router();
  * Helpers
  * -------------------------
  */
-function restoreStockOnProduct(productDoc, size, qty) {
-  const rawSize = String(size || "").trim();
-  const s = rawSize.toUpperCase(); // "xs" -> "XS"
-  const q = Number(qty || 1);
 
-  if (!productDoc || !q || q <= 0) return { ok: false, reason: "invalid" };
-  if (!s) return { ok: false, reason: "no-size" };
-
-  // ✅ YOUR SCHEMA: sizes is an OBJECT: { XS: 1, S: 2, ... }
-  if (productDoc.sizes && typeof productDoc.sizes === "object" && !Array.isArray(productDoc.sizes)) {
-    if (Object.prototype.hasOwnProperty.call(productDoc.sizes, s)) {
-      productDoc.sizes[s] = (Number(productDoc.sizes[s]) || 0) + q;
-      productDoc.markModified("sizes");
-      return { ok: true, mode: "sizes-object", size: s, value: productDoc.sizes[s] };
-    }
-    return { ok: false, reason: `unknown-size-${s}` };
-  }
-
-  // Fallback (just in case): generic numeric stock fields
-  const genericFields = ["countInStock", "stock", "quantity", "qty", "inventory", "inStock"];
-  for (const f of genericFields) {
-    if (typeof productDoc[f] === "number") {
-      productDoc[f] += q;
-      return { ok: true, mode: "generic-number", field: f, value: productDoc[f] };
-    }
-  }
-
-  return { ok: false, reason: "no-known-stock-shape" };
-}
-
-
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 function parseDateRange(from, to) {
   let fromDate = null;
@@ -80,13 +50,38 @@ function buildCreatedAtFilter(from, to) {
   return Object.keys(filter).length ? { createdAt: filter } : {};
 }
 
-/**
- * Return/Refund helpers (FINAL)
- * ✅ Product schema: sizes is an OBJECT: { XS: number, S: number, M: number, L: number, XL: number }
- * ✅ This safely restores stock by size and never crashes on null product.
- */
+async function notifyWishlistUsers(productIds, products, discountRate) {
+  const favs = await Favorite.find({ product: { $in: productIds } })
+    .select("user product")
+    .lean();
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const userIds = [...new Set(favs.map((f) => String(f.user)))];
+  const users = await User.find({ _id: { $in: userIds } })
+    .select("email name")
+    .lean();
+
+  let notifiedCount = 0;
+
+  for (const u of users) {
+    if (!u.email) continue;
+    try {
+      await sendDiscountEmail(u.email, u.name || "Customer", products, discountRate);
+      notifiedCount++;
+    } catch (emailErr) {
+      console.error(`Failed to send discount email to ${u.email}:`, emailErr);
+    }
+  }
+
+  return notifiedCount;
+}
+
+/**
+ * =========================================================
+ * Refund helpers (FINAL)
+ * =========================================================
+ * ✅ Product schema: sizes is an OBJECT: { XS, S, M, L, XL }
+ * ✅ Restores stock by size safely (never crashes on null product)
+ */
 
 async function restoreStockForReturn(returnReq) {
   const product = await Product.findById(returnReq.product);
@@ -111,71 +106,7 @@ async function restoreStockForReturn(returnReq) {
   return { restored: true, size, before, after: product.sizes[size] };
 }
 
-/**
- * Mock refund provider
- */
 async function processPaymentRefundMock(order, amount) {
-  const tx = order?.paymentDetails?.transactionId || "";
-  return {
-    provider: "mock",
-    transactionId: tx,
-    refundedAmount: round2(amount),
-    refundId: `mock_ref_${Date.now()}`,
-  };
-}
-
-
-// Product modelinde stok field'ı hangisi bilmiyoruz.
-// Buraya sizin field adınızı ekleyebilirsin.
-const STOCK_FIELD_CANDIDATES = [
-  "stock",
-  "countInStock",
-  "inventory",
-  "inventoryCount",
-  "quantity",
-  "qty",
-  "inStock",
-];
-
-function detectStockField(productDoc) {
-  if (!productDoc) return null;
-  for (const f of STOCK_FIELD_CANDIDATES) {
-    if (Object.prototype.hasOwnProperty.call(productDoc, f)) return f;
-  }
-  return null;
-}
-
-async function restoreStockForReturn(returnReq) {
-  // returnReq: ReturnRequest doc
-  const product = await Product.findById(returnReq.product);
-  const stockRes = restoreStockOnProduct(product, returnReq.size, returnReq.quantity);
-  await product.save();
-  if (!product) {
-    return { restored: false, message: "Product not found for stock restore" };
-  }
-
-  const field = detectStockField(product);
-  if (!field) {
-    // stok alanı yoksa kırmayalım, sadece uyarı verelim
-    return { restored: false, message: "No stock field detected on Product model" };
-  }
-
-  const qty = Number(returnReq.quantity || 1);
-  const current = Number(product[field] || 0);
-
-  product[field] = current + qty;
-  await product.save();
-
-  return { restored: true, field, before: current, after: product[field] };
-}
-
-/**
- * Payment refund placeholder:
- * - Sizin projede Stripe/iyzico/paypal ne varsa burada bağlanacak.
- * - Şimdilik "mock" refund yapıyoruz, DB tarafında status güncelliyoruz.
- */
-async function processPaymentRefundMock(order, amount) {
-  // amount number
   const tx = order?.paymentDetails?.transactionId || "";
   return {
     provider: "mock",
@@ -197,7 +128,7 @@ function pushReturnHistory(rr, status, note, byUserId) {
 
 /**
  * -------------------------
- * 1) INVOICES (Existing)
+ * 1) INVOICES
  * -------------------------
  */
 router.get("/invoices", requireSalesManager, async (req, res) => {
@@ -218,7 +149,7 @@ router.get("/invoices", requireSalesManager, async (req, res) => {
 
 /**
  * -------------------------
- * 2) DISCOUNT CAMPAIGNS (Existing)
+ * 2) DISCOUNT CAMPAIGNS
  * -------------------------
  */
 router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
@@ -235,7 +166,9 @@ router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
 
     const r = Number(discountRate);
     if (!(r > 0 && r < 1)) {
-      return res.status(400).json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
+      return res
+        .status(400)
+        .json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
     }
 
     const s = new Date(startDate);
@@ -287,7 +220,9 @@ router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
       }
     }
 
-    const notifiedUsers = shouldApplyNow ? await notifyWishlistUsers(productIds, products, r) : 0;
+    const notifiedUsers = shouldApplyNow
+      ? await notifyWishlistUsers(productIds, products, r)
+      : 0;
 
     return res.json({
       message: shouldApplyNow ? "Campaign created and applied" : "Campaign created (not active yet)",
@@ -345,7 +280,7 @@ router.patch("/discount-campaigns/:id/deactivate", requireSalesManager, async (r
 
 /**
  * -------------------------
- * 3) DISCOUNT legacy endpoints (Existing)
+ * 3) DISCOUNT legacy endpoints
  * -------------------------
  */
 router.post("/discount", requireSalesManager, async (req, res) => {
@@ -358,7 +293,9 @@ router.post("/discount", requireSalesManager, async (req, res) => {
 
     const r = Number(discountRate);
     if (!(r > 0 && r < 1)) {
-      return res.status(400).json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
+      return res
+        .status(400)
+        .json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
     }
 
     const products = await Product.find({ _id: { $in: productIds } });
@@ -447,7 +384,7 @@ router.post("/discount/all", requireSalesManager, async (req, res) => {
 
 /**
  * -------------------------
- * 5) PRICES (Manual) (Existing)
+ * 4) PRICES (Manual)
  * -------------------------
  */
 router.put("/prices", requireSalesManager, async (req, res) => {
@@ -486,7 +423,7 @@ router.put("/prices", requireSalesManager, async (req, res) => {
 
 /**
  * -------------------------
- * 6) ANALYTICS (Existing)
+ * 5) ANALYTICS
  * -------------------------
  */
 router.get("/analytics", requireSalesManager, async (req, res) => {
@@ -617,11 +554,6 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
  * =========================================================
  * SCRUM-95: Revenue & Profit APIs
  * =========================================================
- * Ayrı endpointler:
- * - GET /revenue?from=YYYY-MM-DD&to=YYYY-MM-DD
- * - GET /profit?from=YYYY-MM-DD&to=YYYY-MM-DD
- *
- * Not: "analytics" zaten var, ama JIRA ayrı API istediği için ekledik.
  */
 
 async function computeRevenueCostRefunds(from, to) {
@@ -679,7 +611,7 @@ async function computeRevenueCostRefunds(from, to) {
       } else if (it.productId?.cost != null && !Number.isNaN(Number(it.productId.cost))) {
         unitCost = Number(it.productId.cost);
       } else {
-        unitCost = salePrice * 0.5; // fallback
+        unitCost = salePrice * 0.5;
       }
 
       cost += unitCost * qty;
@@ -734,21 +666,8 @@ router.get("/profit", requireSalesManager, async (req, res) => {
 
 /**
  * =========================================================
- * SCRUM-98: Refund Workflow (Sales manager approval + stock restore + payment refund)
+ * SCRUM-98: Refund Workflow
  * =========================================================
- *
- * Endpoints:
- * - GET   /returns?status=Requested|Approved|Rejected|Received|Refunded|Completed|Cancelled
- * - GET   /returns/:id
- * - PATCH /returns/:id/approve   { note?: string, refundNow?: boolean, refundedAmount?: number }
- * - PATCH /returns/:id/reject    { reason?: string, note?: string }
- * - PATCH /returns/:id/receive   { note?: string }
- * - PATCH /returns/:id/refund    { refundedAmount?: number, note?: string }
- * - PATCH /returns/:id/complete  { note?: string }
- *
- * Notlar:
- * - approve default olarak refundNow=true (JIRA’da "approval, stock restore, payment refund" tek akış gibi)
- * - stok restore refund sırasında yapılır (gerçek hayatta iade ürün depoya gelince "receive" sonrası yapmak isteyebilirsin)
  */
 
 router.get("/returns", requireSalesManager, async (req, res) => {
@@ -860,8 +779,6 @@ router.patch("/returns/:id/refund", requireSalesManager, async (req, res) => {
     const order = await Order.findById(rr.order);
     if (!order) return res.status(404).json({ message: "Order not found for this return" });
 
-    // refunded amount:
-    // - Eğer göndermezsen order item price*qty'dan hesaplarız.
     let amount = Number(refundedAmount);
     if (!(amount > 0)) {
       const productIdStr = String(rr.product);
@@ -872,13 +789,9 @@ router.patch("/returns/:id/refund", requireSalesManager, async (req, res) => {
     }
     amount = round2(amount);
 
-    // 1) STOCK RESTORE
     const stockResult = await restoreStockForReturn(rr);
-
-    // 2) PAYMENT REFUND (mock)
     const refundResult = await processPaymentRefundMock(order, amount);
 
-    // 3) Update ReturnRequest
     rr.status = "Refunded";
     rr.refundedAmount = amount;
     rr.refundedAt = new Date();
@@ -893,7 +806,6 @@ router.patch("/returns/:id/refund", requireSalesManager, async (req, res) => {
 
     await rr.save();
 
-    // 4) Update Order (minimal)
     order.paymentStatus = "Refunded";
     await order.save();
 
@@ -942,7 +854,6 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
 
     const current = rr.status;
 
-    // idempotency
     if (["Refunded", "Completed"].includes(current)) {
       return res.status(200).json({ message: "Already processed", returnRequest: rr });
     }
@@ -960,14 +871,11 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
     pushReturnHistory(rr, "Approved", String(note || "Approved"), req.user?.id);
     await rr.save();
 
-    // Default: refundNow = true
     const doRefund = refundNow == null ? true : Boolean(refundNow);
-
     if (!doRefund) {
       return res.json({ message: "Return approved", returnRequest: rr });
     }
 
-    // Refund now -> reuse /refund logic via function-like flow
     const order = await Order.findById(rr.order);
     if (!order) return res.status(404).json({ message: "Order not found for this return" });
 
