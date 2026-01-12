@@ -65,7 +65,7 @@ export default function AdminReturnsPage() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
 
-  // NOTE: Sales manager returns endpoint (you were using /api/sales/returns)
+  // Sales manager returns endpoint
   const loadReturns = useCallback(async (statusToLoad) => {
     try {
       setErr("");
@@ -123,7 +123,10 @@ export default function AdminReturnsPage() {
   const syncActiveFromFreshList = useCallback(
     async (returnIdToSync) => {
       if (!returnIdToSync) return;
-      const st = statusFilter && statusFilter !== "all" ? `?status=${encodeURIComponent(statusFilter)}` : "";
+      const st =
+        statusFilter && statusFilter !== "all"
+          ? `?status=${encodeURIComponent(statusFilter)}`
+          : "";
       const fresh = await apiFetch(`/api/sales/returns${st}`);
       const list = Array.isArray(fresh) ? fresh : [];
       setReturns(list);
@@ -142,9 +145,10 @@ export default function AdminReturnsPage() {
 
       setLoading(true);
 
+      // ✅ approve only (no refund)
       const data = await apiFetch(`/api/sales/returns/${returnId}/approve`, {
         method: "PATCH",
-        body: JSON.stringify({ note: "Approved by sales manager" }),
+        body: JSON.stringify({ note: "Approved by sales manager", refundNow: false }),
       });
 
       setMsg(data?.message || "Approved.");
@@ -190,8 +194,8 @@ export default function AdminReturnsPage() {
 
       setLoading(true);
 
-      // ✅ backend route is "/:id/received"
-      const data = await apiFetch(`/api/sales/returns/${returnId}/received`, {
+      // ✅ FIX: backend route is "/receive" (NOT "/received")
+      const data = await apiFetch(`/api/sales/returns/${returnId}/receive`, {
         method: "PATCH",
         body: JSON.stringify({ note: "Received at warehouse" }),
       });
@@ -357,7 +361,7 @@ export default function AdminReturnsPage() {
               const canApprove = st === "Requested";
               const canReject = st === "Requested";
               const canReceived = st === "Approved";
-              const canRefund = st === "Received"; // ✅ align with backend
+              const canRefund = st === "Received";
               const canComplete = st === "Refunded";
 
               return (
