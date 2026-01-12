@@ -1,18 +1,18 @@
 // backend/src/routes/chatRoutes.js
 import express from "express";
-import multer from "multer"; 
-import path from "path"; 
+import multer from "multer";
+import path from "path";
 import mongoose from "mongoose";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import Chat from "../models/Chat.js";
-import User from "../models/User.js"; 
-import Order from "../models/Order.js"; 
+import User from "../models/User.js";
+import Order from "../models/Order.js";
 
 const router = express.Router();
 
 // 📂 Dosya Kayıt Konfigürasyonu
 const storage = multer.diskStorage({
-  destination: "uploads/chat/", 
+  destination: "uploads/chat/",
   filename: (req, file, cb) => {
     cb(null, Date.now() + path.extname(file.originalname));
   },
@@ -23,7 +23,7 @@ const upload = multer({ storage });
 // 📤 Dosya Yükleme Endpoint'i
 router.post("/upload", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded.");
-  
+
   const fileUrl = `http://localhost:5050/uploads/chat/${req.file.filename}`;
   res.json({ fileUrl, fileName: req.file.originalname });
 });
@@ -66,8 +66,8 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (req, res) 
     // Sadece geçerli ID'ler için User sorgula
     const users = validUserIds.length > 0
       ? await User.find({ _id: { $in: validUserIds } })
-          .select("_id name email phone address")
-          .lean()
+        .select("_id name email phone address")
+        .lean()
       : [];
 
     console.log(`👤 Found ${users.length} registered users`);
@@ -80,18 +80,18 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (req, res) 
     const result = chats.map((c) => {
       const customerId = c.customerId.toString();
       const user = userMap[customerId];
-      
+
       // Guest kullanıcı mı kontrol et
       const isGuest = customerId.startsWith('guest-');
-      
+
       const chatData = {
         chatId: c.chatId,
         customerId: customerId,
-        customerName: isGuest 
-          ? "Guest User" 
+        customerName: isGuest
+          ? "Guest User"
           : (user?.name || "Unknown User"),
-        customerEmail: isGuest 
-          ? "guest@temporary.com" 
+        customerEmail: isGuest
+          ? "N/A"
           : (user?.email || "N/A"),
         lastMessageAt: c.lastMessageAt,
         status: c.status || 'active',
@@ -102,21 +102,21 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (req, res) 
         messageCount: c.messages?.length || 0,
         isGuest: isGuest
       };
-      
+
       return chatData;
     });
 
     console.log(`✅ Sending ${result.length} chats to frontend (${result.filter(c => c.isGuest).length} guests)`);
     res.json(result);
-    
+
   } catch (err) {
     console.error("❌❌❌ CRITICAL ERROR in /admin route:");
     console.error("Error name:", err.name);
     console.error("Error message:", err.message);
     console.error("Error stack:", err.stack);
-    
-    res.status(500).json({ 
-      message: "Failed to fetch chats", 
+
+    res.status(500).json({
+      message: "Failed to fetch chats",
       error: err.message,
       stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
@@ -131,7 +131,7 @@ router.get(
     try {
       const { customerId } = req.params;
       console.log("🔍 Fetching user details for:", customerId);
-      
+
       // Guest kullanıcı kontrolü
       if (customerId.startsWith('guest-')) {
         console.log("👻 Guest user detected, returning placeholder data");
@@ -139,7 +139,7 @@ router.get(
           user: {
             _id: customerId,
             name: "Guest User",
-            email: "guest@temporary.com",
+            email: "N/A",
             phone: "N/A",
             address: "N/A",
             isGuest: true
@@ -147,13 +147,13 @@ router.get(
           orders: []
         });
       }
-      
+
       // Geçerli ObjectId kontrolü
       if (!mongoose.Types.ObjectId.isValid(customerId)) {
         console.log("❌ Invalid customer ID format:", customerId);
         return res.status(400).json({ message: "Invalid customer ID format" });
       }
-      
+
       const user = await User.findById(customerId).select("-password").lean();
       if (!user) {
         console.log("❌ User not found:", customerId);
@@ -167,7 +167,7 @@ router.get(
 
       console.log(`✅ User found: ${user.name}, Orders: ${orders.length}`);
       res.json({ user, orders: orders || [] });
-      
+
     } catch (err) {
       console.error("❌ User details error:", err);
       res.status(500).json({ message: "Error fetching user details", error: err.message });
@@ -183,7 +183,7 @@ router.get("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
     console.log("🔍 Fetching messages for chatId:", chatId);
-    
+
     const chat = await Chat.findOne({ chatId }).lean();
 
     if (!chat) {
@@ -192,7 +192,7 @@ router.get("/:chatId", async (req, res) => {
     }
 
     console.log(`✅ Chat found with ${chat.messages?.length || 0} messages, status: ${chat.status}`);
-    
+
     // Tüm chat objesini döndür (messages dahil)
     res.json({
       chatId: chat.chatId,
@@ -203,7 +203,7 @@ router.get("/:chatId", async (req, res) => {
       createdAt: chat.createdAt,
       updatedAt: chat.updatedAt
     });
-    
+
   } catch (err) {
     console.error("❌ Fetch messages error:", err);
     res.status(500).json({ message: "Failed to fetch messages", error: err.message });
@@ -215,14 +215,14 @@ router.put("/:chatId/close", async (req, res) => {
   try {
     const { chatId } = req.params;
     console.log("🔒 Closing chat:", chatId);
-    
+
     const updatedChat = await Chat.findOneAndUpdate(
       { chatId: chatId },
-      { 
-        $set: { 
+      {
+        $set: {
           status: "closed"
-        } 
-      }, 
+        }
+      },
       { new: true }
     );
 
@@ -232,11 +232,11 @@ router.put("/:chatId/close", async (req, res) => {
     }
 
     console.log("✅ Chat closed successfully:", chatId);
-    res.status(200).json({ 
+    res.status(200).json({
       message: "Chat closed, history preserved.",
       chat: updatedChat
     });
-    
+
   } catch (err) {
     console.error("❌ Close chat error:", err);
     res.status(500).json({ message: "Error closing chat", error: err.message });
