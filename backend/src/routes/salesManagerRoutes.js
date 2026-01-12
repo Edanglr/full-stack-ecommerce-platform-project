@@ -11,14 +11,13 @@ import { sendDiscountEmail } from "../utils/email.js";
 
 const router = express.Router();
 
-/**
- * -------------------------
- * Helpers
- * -------------------------
- */
-
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+/**
+ * -------------------------
+ * Date helpers
+ * -------------------------
+ */
 function parseDateRange(from, to) {
   let fromDate = null;
   let toDate = null;
@@ -50,44 +49,45 @@ function buildCreatedAtFilter(from, to) {
   return Object.keys(filter).length ? { createdAt: filter } : {};
 }
 
+/**
+ * -------------------------
+ * Wishlist notification
+ * -------------------------
+ */
 async function notifyWishlistUsers(productIds, products, discountRate) {
   const favs = await Favorite.find({ product: { $in: productIds } })
     .select("user product")
     .lean();
 
-  const userIds = [...new Set(favs.map((f) => String(f.user)))];
+  const userIds = [...new Set((favs || []).map((f) => String(f.user)))];
+  if (userIds.length === 0) return 0;
+
   const users = await User.find({ _id: { $in: userIds } })
     .select("email name")
     .lean();
 
   let notifiedCount = 0;
-
   for (const u of users) {
     if (!u.email) continue;
     try {
       await sendDiscountEmail(u.email, u.name || "Customer", products, discountRate);
       notifiedCount++;
-    } catch (emailErr) {
-      console.error(`Failed to send discount email to ${u.email}:`, emailErr);
+    } catch (e) {
+      console.error(`sendDiscountEmail failed for ${u.email}:`, e.message);
     }
   }
-
   return notifiedCount;
 }
 
 /**
- * =========================================================
- * Refund helpers (FINAL)
- * =========================================================
- * ✅ Product schema: sizes is an OBJECT: { XS, S, M, L, XL }
- * ✅ Restores stock by size safely (never crashes on null product)
+ * -------------------------
+ * Return helpers (FINAL)
+ * Product schema: sizes is OBJECT {XS,S,M,L,XL}
+ * -------------------------
  */
-
 async function restoreStockForReturn(returnReq) {
   const product = await Product.findById(returnReq.product);
-  if (!product) {
-    return { restored: false, message: "Product not found for stock restore" };
-  }
+  if (!product) return { restored: false, message: "Product not found" };
 
   const size = String(returnReq.size || "").toUpperCase().trim();
   const qty = Number(returnReq.quantity || 1);
@@ -129,6 +129,7 @@ function pushReturnHistory(rr, status, note, byUserId) {
 /**
  * -------------------------
  * 1) INVOICES
+ * GET /api/sales/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
  * -------------------------
  */
 router.get("/invoices", requireSalesManager, async (req, res) => {
@@ -166,20 +167,15 @@ router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
 
     const r = Number(discountRate);
     if (!(r > 0 && r < 1)) {
-      return res
-        .status(400)
-        .json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
+      return res.status(400).json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
     }
 
     const s = new Date(startDate);
     const e = new Date(endDate);
-
     if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) {
       return res.status(400).json({ message: "startDate and endDate must be valid dates" });
     }
-    if (e < s) {
-      return res.status(400).json({ message: "endDate must be after startDate" });
-    }
+    if (e < s) return res.status(400).json({ message: "endDate must be after startDate" });
 
     const products = await Product.find({ _id: { $in: productIds } });
     if (!products || products.length === 0) {
@@ -200,7 +196,6 @@ router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
     const shouldApplyNow = now >= s && now <= e;
 
     let updatedCount = 0;
-
     if (shouldApplyNow) {
       for (const p of products) {
         const currentPrice = Number(p.price);
@@ -220,9 +215,7 @@ router.post("/discount-campaigns", requireSalesManager, async (req, res) => {
       }
     }
 
-    const notifiedUsers = shouldApplyNow
-      ? await notifyWishlistUsers(productIds, products, r)
-      : 0;
+    const notifiedUsers = shouldApplyNow ? await notifyWishlistUsers(productIds, products, r) : 0;
 
     return res.json({
       message: shouldApplyNow ? "Campaign created and applied" : "Campaign created (not active yet)",
@@ -270,7 +263,6 @@ router.patch("/discount-campaigns/:id/deactivate", requireSalesManager, async (r
 
     c.isActive = false;
     await c.save();
-
     return res.json({ message: "Campaign deactivated", campaign: c });
   } catch (e) {
     console.error("DEACTIVATE CAMPAIGN ERROR:", e);
@@ -293,18 +285,13 @@ router.post("/discount", requireSalesManager, async (req, res) => {
 
     const r = Number(discountRate);
     if (!(r > 0 && r < 1)) {
-      return res
-        .status(400)
-        .json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
+      return res.status(400).json({ message: "discountRate must be like 0.10, 0.20, 0.25" });
     }
 
     const products = await Product.find({ _id: { $in: productIds } });
-    if (products.length === 0) {
-      return res.status(404).json({ message: "No products found" });
-    }
+    if (products.length === 0) return res.status(404).json({ message: "No products found" });
 
     let updatedCount = 0;
-
     for (const p of products) {
       const currentPrice = Number(p.price);
 
@@ -338,15 +325,12 @@ router.post("/discount", requireSalesManager, async (req, res) => {
 router.post("/discount/all", requireSalesManager, async (req, res) => {
   try {
     const rate = Number(req.body.rate || 0);
-
     if (Number.isNaN(rate) || rate < 0 || rate > 90) {
       return res.status(400).json({ message: "Invalid discount rate (0-90)." });
     }
 
     const products = await Product.find({});
-    if (!products || products.length === 0) {
-      return res.json({ message: "No products found." });
-    }
+    if (!products || products.length === 0) return res.json({ message: "No products found." });
 
     const discountRate = rate / 100;
     let updatedCount = 0;
@@ -376,15 +360,17 @@ router.post("/discount/all", requireSalesManager, async (req, res) => {
       updatedCount,
       notifiedUsers,
     });
-  } catch (err) {
-    console.error("DISCOUNT ALL ERROR:", err);
-    return res.status(500).json({ message: "Server error: " + err.message });
+  } catch (e) {
+    console.error("DISCOUNT ALL ERROR:", e);
+    return res.status(500).json({ message: "Server error: " + e.message });
   }
 });
 
 /**
  * -------------------------
- * 4) PRICES (Manual)
+ * 4) PRICES (manual)
+ * PUT /api/sales/prices
+ * body: { updates: [{ productId, newPrice }] }
  * -------------------------
  */
 router.put("/prices", requireSalesManager, async (req, res) => {
@@ -395,11 +381,9 @@ router.put("/prices", requireSalesManager, async (req, res) => {
     }
 
     let updatedCount = 0;
-
     for (const u of updates) {
       const productId = u?.productId;
       const newPrice = Number(u?.newPrice);
-
       if (!productId || !(newPrice > 0)) continue;
 
       const p = await Product.findById(productId);
@@ -424,6 +408,7 @@ router.put("/prices", requireSalesManager, async (req, res) => {
 /**
  * -------------------------
  * 5) ANALYTICS
+ * GET /api/sales/analytics?from&to
  * -------------------------
  */
 router.get("/analytics", requireSalesManager, async (req, res) => {
@@ -432,11 +417,10 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
     const dateFilter = buildCreatedAtFilter(from, to);
 
     const orders = await Order.find(dateFilter)
-      .populate("items.productId", "cost price basePrice")
+      .populate("items.productId", "cost")
       .sort({ createdAt: 1 });
 
     const { fromDate, toDate } = parseDateRange(from, to);
-
     const timeCond = {};
     if (fromDate) timeCond.$gte = fromDate;
     if (toDate) timeCond.$lte = toDate;
@@ -478,15 +462,12 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
       refundByDay.set(dayKey, (refundByDay.get(dayKey) || 0) + amt);
     }
 
-    for (const o of orders) {
+    for (const o of orders || []) {
       const ship = String(o.shippingStatus || "").toLowerCase();
       if (ship === "cancelled") continue;
 
       const dayKey = new Date(o.createdAt).toISOString().slice(0, 10);
-
-      if (!byDay.has(dayKey)) {
-        byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
-      }
+      if (!byDay.has(dayKey)) byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
 
       for (const it of o.items || []) {
         const salePrice = Number(it.unitPriceAtPurchase ?? it.price ?? 0);
@@ -500,7 +481,7 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
         } else if (it.productId?.cost != null && !Number.isNaN(Number(it.productId.cost))) {
           unitCost = Number(it.productId.cost);
         } else {
-          unitCost = salePrice * 0.5;
+          unitCost = salePrice * 0.5; // fallback
         }
 
         const lineCost = unitCost * qty;
@@ -514,9 +495,7 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
     }
 
     for (const [dayKey, amt] of refundByDay.entries()) {
-      if (!byDay.has(dayKey)) {
-        byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
-      }
+      if (!byDay.has(dayKey)) byDay.set(dayKey, { revenue: 0, cost: 0, refunds: 0 });
       byDay.get(dayKey).refunds += amt;
     }
 
@@ -551,11 +530,10 @@ router.get("/analytics", requireSalesManager, async (req, res) => {
 });
 
 /**
- * =========================================================
- * SCRUM-95: Revenue & Profit APIs
- * =========================================================
+ * -------------------------
+ * 6) REVENUE & PROFIT APIs
+ * -------------------------
  */
-
 async function computeRevenueCostRefunds(from, to) {
   const dateFilter = buildCreatedAtFilter(from, to);
 
@@ -564,7 +542,6 @@ async function computeRevenueCostRefunds(from, to) {
     .sort({ createdAt: 1 });
 
   const { fromDate, toDate } = parseDateRange(from, to);
-
   const timeCond = {};
   if (fromDate) timeCond.$gte = fromDate;
   if (toDate) timeCond.$lte = toDate;
@@ -585,16 +562,14 @@ async function computeRevenueCostRefunds(from, to) {
     status: { $in: ["Refunded", "Completed"] },
     ...returnTimeFilter,
   })
-    .select("refundedAmount refundedAt processedAt updatedAt createdAt")
+    .select("refundedAmount")
     .lean();
 
   let revenue = 0;
   let cost = 0;
   let refunds = 0;
 
-  for (const r of returns || []) {
-    refunds += Number(r.refundedAmount || 0);
-  }
+  for (const r of returns || []) refunds += Number(r.refundedAmount || 0);
 
   for (const o of orders || []) {
     const ship = String(o.shippingStatus || "").toLowerCase();
@@ -613,7 +588,6 @@ async function computeRevenueCostRefunds(from, to) {
       } else {
         unitCost = salePrice * 0.5;
       }
-
       cost += unitCost * qty;
     }
   }
@@ -665,20 +639,17 @@ router.get("/profit", requireSalesManager, async (req, res) => {
 });
 
 /**
- * =========================================================
- * SCRUM-98: Refund Workflow
- * =========================================================
+ * -------------------------
+ * 7) RETURNS workflow for Sales Manager
+ * -------------------------
  */
-
 router.get("/returns", requireSalesManager, async (req, res) => {
   try {
     const { status, from, to } = req.query || {};
     const dateFilter = buildCreatedAtFilter(from, to);
 
     const q = { ...dateFilter };
-    if (status && typeof status === "string") {
-      q.status = status;
-    }
+    if (status && typeof status === "string") q.status = status;
 
     const list = await ReturnRequest.find(q)
       .populate("user", "name email")
@@ -699,6 +670,7 @@ router.get("/returns/:id", requireSalesManager, async (req, res) => {
       .populate("user", "name email")
       .populate("order", "trackingCode paymentStatus paymentDetails invoiceNumber createdAt items")
       .populate("product", "name price");
+
     if (!rr) return res.status(404).json({ message: "Return request not found" });
     return res.json(rr);
   } catch (e) {
@@ -714,7 +686,6 @@ router.patch("/returns/:id/reject", requireSalesManager, async (req, res) => {
     if (!rr) return res.status(404).json({ message: "Return request not found" });
 
     const current = rr.status;
-
     if (["Refunded", "Completed", "Cancelled"].includes(current)) {
       return res.status(400).json({ message: `Cannot reject when status is ${current}` });
     }
@@ -853,16 +824,11 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
     if (!rr) return res.status(404).json({ message: "Return request not found" });
 
     const current = rr.status;
-
     if (["Refunded", "Completed"].includes(current)) {
       return res.status(200).json({ message: "Already processed", returnRequest: rr });
     }
-    if (current === "Rejected") {
-      return res.status(400).json({ message: "Cannot approve a rejected request" });
-    }
-    if (current === "Cancelled") {
-      return res.status(400).json({ message: "Cannot approve a cancelled request" });
-    }
+    if (current === "Rejected") return res.status(400).json({ message: "Cannot approve a rejected request" });
+    if (current === "Cancelled") return res.status(400).json({ message: "Cannot approve a cancelled request" });
 
     rr.status = "Approved";
     rr.approvedAt = new Date();
@@ -872,9 +838,7 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
     await rr.save();
 
     const doRefund = refundNow == null ? true : Boolean(refundNow);
-    if (!doRefund) {
-      return res.json({ message: "Return approved", returnRequest: rr });
-    }
+    if (!doRefund) return res.json({ message: "Return approved", returnRequest: rr });
 
     const order = await Order.findById(rr.order);
     if (!order) return res.status(404).json({ message: "Order not found for this return" });
@@ -900,11 +864,8 @@ router.patch("/returns/:id/approve", requireSalesManager, async (req, res) => {
     pushReturnHistory(
       rr,
       "Refunded",
-      String(
-        `Approved & Refunded ${amount}. Stock: ${stockResult.restored ? "OK" : "SKIP"}. ${
-          note ? `Note: ${note}` : ""
-        }`
-      ).slice(0, 500),
+      String(`Approved & Refunded ${amount}. Stock: ${stockResult.restored ? "OK" : "SKIP"}. ${note ? `Note: ${note}` : ""}`)
+        .slice(0, 500),
       req.user?.id
     );
 
