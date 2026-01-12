@@ -80,36 +80,50 @@ function buildCreatedAtFilter(from, to) {
   return Object.keys(filter).length ? { createdAt: filter } : {};
 }
 
+/**
+ * Return/Refund helpers (FINAL)
+ * ✅ Product schema: sizes is an OBJECT: { XS: number, S: number, M: number, L: number, XL: number }
+ * ✅ This safely restores stock by size and never crashes on null product.
+ */
+
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-async function notifyWishlistUsers(productIds, products, discountRate) {
-  const favs = await Favorite.find({ product: { $in: productIds } })
-    .select("user product")
-    .lean();
-
-  const userIds = [...new Set(favs.map((f) => String(f.user)))];
-  const users = await User.find({ _id: { $in: userIds } })
-    .select("email name")
-    .lean();
-
-  let notifiedCount = 0;
-
-  for (const u of users) {
-    if (!u.email) continue;
-    try {
-      await sendDiscountEmail(u.email, u.name || "Customer", products, discountRate);
-      notifiedCount++;
-    } catch (emailErr) {
-      console.error(`Failed to send discount email to ${u.email}:`, emailErr);
-    }
+async function restoreStockForReturn(returnReq) {
+  const product = await Product.findById(returnReq.product);
+  if (!product) {
+    return { restored: false, message: "Product not found for stock restore" };
   }
 
-  return notifiedCount;
+  const size = String(returnReq.size || "").toUpperCase().trim();
+  const qty = Number(returnReq.quantity || 1);
+
+  if (!size || !(qty > 0)) {
+    return { restored: false, message: "Invalid size/quantity" };
+  }
+
+  product.sizes = product.sizes || {};
+  const before = Number(product.sizes?.[size] ?? 0);
+  product.sizes[size] = before + qty;
+
+  product.markModified("sizes");
+  await product.save();
+
+  return { restored: true, size, before, after: product.sizes[size] };
 }
 
 /**
- * Return/Refund helpers
+ * Mock refund provider
  */
+async function processPaymentRefundMock(order, amount) {
+  const tx = order?.paymentDetails?.transactionId || "";
+  return {
+    provider: "mock",
+    transactionId: tx,
+    refundedAmount: round2(amount),
+    refundId: `mock_ref_${Date.now()}`,
+  };
+}
+
 
 // Product modelinde stok field'ı hangisi bilmiyoruz.
 // Buraya sizin field adınızı ekleyebilirsin.
