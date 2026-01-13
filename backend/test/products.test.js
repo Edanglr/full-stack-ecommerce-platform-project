@@ -1,17 +1,12 @@
+// backend/test/products.test.js
 import request from "supertest";
-import jwt from "jsonwebtoken";
 import Product from "../src/models/Product.js";
 import Rating from "../src/models/Rating.js";
 
 import { createTestApp } from "./testApp.js";
-const app = createTestApp();
+import { createUser, authHeaderFor } from "./helpers.js";
 
-function managerToken() {
-  return jwt.sign(
-    { id: "507f1f77bcf86cd799439014", email: "mgr@test.com", role: "manager", name: "Mgr" },
-    process.env.JWT_SECRET
-  );
-}
+const app = createTestApp();
 
 describe("PRODUCTS", () => {
   test("12) GET /api/products -> returns array", async () => {
@@ -34,8 +29,26 @@ describe("PRODUCTS", () => {
 
   test("13) GET /api/products?sortBy=priceAsc -> sorted ascending", async () => {
     await Product.create([
-      { name: "A", model: "m", serialNumber: "s", warrantyStatus: "12", distributor: "d", price: 200, category: "x", sizes: { M: 1 } },
-      { name: "B", model: "m", serialNumber: "s2", warrantyStatus: "12", distributor: "d", price: 50, category: "x", sizes: { M: 1 } },
+      {
+        name: "A",
+        model: "m",
+        serialNumber: "s",
+        warrantyStatus: "12",
+        distributor: "d",
+        price: 200,
+        category: "x",
+        sizes: { M: 1 },
+      },
+      {
+        name: "B",
+        model: "m",
+        serialNumber: "s2",
+        warrantyStatus: "12",
+        distributor: "d",
+        price: 50,
+        category: "x",
+        sizes: { M: 1 },
+      },
     ]);
 
     const res = await request(app).get("/api/products?sortBy=priceAsc");
@@ -46,8 +59,26 @@ describe("PRODUCTS", () => {
 
   test("14) GET /api/products?category=JeAnS -> case-insensitive category match", async () => {
     await Product.create([
-      { name: "J1", model: "m", serialNumber: "s1", warrantyStatus: "12", distributor: "d", price: 10, category: "jeans", sizes: { M: 1 } },
-      { name: "T1", model: "m", serialNumber: "s2", warrantyStatus: "12", distributor: "d", price: 10, category: "t-shirt", sizes: { M: 1 } },
+      {
+        name: "J1",
+        model: "m",
+        serialNumber: "s1",
+        warrantyStatus: "12",
+        distributor: "d",
+        price: 10,
+        category: "jeans",
+        sizes: { M: 1 },
+      },
+      {
+        name: "T1",
+        model: "m",
+        serialNumber: "s2",
+        warrantyStatus: "12",
+        distributor: "d",
+        price: 10,
+        category: "t-shirt",
+        sizes: { M: 1 },
+      },
     ]);
 
     const res = await request(app).get("/api/products?category=JeAnS");
@@ -82,18 +113,23 @@ describe("PRODUCTS", () => {
   });
 
   test("16) POST /api/products (manager) -> 400 if missing requirement-9 fields", async () => {
+    const mgr = await createUser({ role: "manager", email: "mgr-prod1@test.com" });
+
     const res = await request(app)
       .post("/api/products")
-      .set("Authorization", `Bearer ${managerToken()}`)
+      .set(authHeaderFor(mgr))
       .send({ name: "X", price: 10, category: "c" });
 
+    // Auth OK, validation should fail
     expect(res.status).toBe(400);
   });
 
   test("17) POST /api/products (manager) -> 201 creates product", async () => {
+    const mgr = await createUser({ role: "manager", email: "mgr-prod2@test.com" });
+
     const res = await request(app)
       .post("/api/products")
-      .set("Authorization", `Bearer ${managerToken()}`)
+      .set(authHeaderFor(mgr))
       .send({
         name: "New",
         price: 99,
@@ -110,6 +146,8 @@ describe("PRODUCTS", () => {
   });
 
   test("18) PUT /api/products/:id (manager) -> merges sizes", async () => {
+    const mgr = await createUser({ role: "manager", email: "mgr-prod3@test.com" });
+
     const p = await Product.create({
       name: "P",
       model: "m",
@@ -123,7 +161,7 @@ describe("PRODUCTS", () => {
 
     const res = await request(app)
       .put(`/api/products/${p._id}`)
-      .set("Authorization", `Bearer ${managerToken()}`)
+      .set(authHeaderFor(mgr))
       .send({ sizes: { M: 9, L: 3 } });
 
     expect(res.status).toBe(200);
