@@ -1,103 +1,122 @@
 // backend/test/orders.test.js
 import request from "supertest";
+import Product from "../src/models/Product.js";
+import Order from "../src/models/Order.js";
+
+import { createUser, authHeaderFor } from "./helpers.js";
+
+// ✅ IMPORTANT: Mock email module BEFORE importing testApp
 import { jest } from "@jest/globals";
 
-import Order from "../src/models/Order.js";
-import Product from "../src/models/Product.js";
+jest.unstable_mockModule("../src/utils/email.js", () => {
+  return {
+    // Projede hangi isimler import ediliyorsa hepsini güvenli şekilde veriyoruz
+    createTransporter: () => ({ sendMail: async () => true }),
 
-import { seedUser, seedProduct } from "./helpers.js";
-
-// ✅ MOCK email module so missing named exports don't crash tests
-jest.unstable_mockModule("../src/utils/email.js", () => ({
-  sendRefundApprovalEmail: jest.fn(),
-  sendOrderConfirmationEmail: jest.fn(),
-  sendPriceDropEmail: jest.fn(),
-}));
+    sendInvoiceEmail: jest.fn(async () => true),
+    sendRefundApprovalEmail: jest.fn(async () => true),
+    sendRefundRequestEmail: jest.fn(async () => true),
+    sendReturnRequestEmail: jest.fn(async () => true),
+    sendReturnStatusEmail: jest.fn(async () => true),
+    sendRefundProcessedEmail: jest.fn(async () => true),
+  };
+});
 
 let app;
-
 beforeAll(async () => {
-  // IMPORTANT: import testApp AFTER mockModule
   const mod = await import("./testApp.js");
   app = mod.createTestApp();
 });
 
+const makeProduct = async (over = {}) => {
+  return Product.create({
+    name: "P",
+    model: "m",
+    serialNumber: "sn-" + Math.random().toString(16).slice(2),
+    distributor: "d",
+    warrantyStatus: "12",
+    price: 10,
+    category: "c",
+    sizes: { M: 5 },
+    ...over,
+  });
+};
+
 describe("ORDERS", () => {
   test("25) POST /api/orders -> 400 if no items", async () => {
-    const { token } = await seedUser();
+    const u = await createUser({ role: "customer", email: "ord25@test.com" });
+
     const res = await request(app)
       .post("/api/orders")
-      .set("Authorization", `Bearer ${token}`)
+      .set(authHeaderFor(u))
       .send({ items: [] });
 
-    expect([400, 422]).toContain(res.status);
+    expect(res.status).toBe(400);
   });
 
   test("26) POST /api/orders -> 404 if product not found", async () => {
-    const { token } = await seedUser();
-    const fakeId = "507f1f77bcf86cd799439011";
+    const u = await createUser({ role: "customer", email: "ord26@test.com" });
 
     const res = await request(app)
       .post("/api/orders")
-      .set("Authorization", `Bearer ${token}`)
+      .set(authHeaderFor(u))
       .send({
-        items: [{ productId: fakeId, name: "X", price: 10, size: "M", quantity: 1, imageUrl: "x" }],
+        items: [{ productId: "507f1f77bcf86cd799439011", name: "X", size: "M", quantity: 1, price: 10 }],
       });
 
-    expect([404, 400]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("27) POST /api/orders -> 400 if not enough stock", async () => {
-    const { token } = await seedUser();
-    const p = await seedProduct({ sizes: { XS: 0, S: 0, M: 0, L: 0, XL: 0 } });
+    const u = await createUser({ role: "customer", email: "ord27@test.com" });
+    const p = await makeProduct({ sizes: { M: 1 } });
 
     const res = await request(app)
       .post("/api/orders")
-      .set("Authorization", `Bearer ${token}`)
+      .set(authHeaderFor(u))
       .send({
-        items: [{ productId: String(p._id), name: p.name, price: p.price, size: "M", quantity: 1, imageUrl: p.imageUrl }],
+        items: [{ productId: String(p._id), name: p.name, size: "M", quantity: 3, price: p.price }],
       });
 
-    expect([400, 409]).toContain(res.status);
+    expect(res.status).toBe(400);
   });
 
   test("28) POST /api/orders -> 201 success decreases stock + returns invoice object", async () => {
-    const { token } = await seedUser();
-    const p = await seedProduct({ sizes: { XS: 0, S: 0, M: 5, L: 0, XL: 0 }, price: 50 });
+    const u = await createUser({ role: "customer", email: "ord28@test.com" });
+    const p = await makeProduct({ sizes: { M: 5 } });
 
     const res = await request(app)
       .post("/api/orders")
-      .set("Authorization", `Bearer ${token}`)
+      .set(authHeaderFor(u))
       .send({
-        items: [{ productId: String(p._id), name: p.name, price: p.price, size: "M", quantity: 2, imageUrl: p.imageUrl }],
+        items: [{ productId: String(p._id), name: p.name, size: "M", quantity: 2, price: p.price }],
       });
 
-    expect([201, 200]).toContain(res.status);
+    expect(res.status).toBe(201);
 
-    // check stock decreased if your implementation updates product
-    const fresh = await Product.findById(p._id).lean();
-    if (fresh?.sizes?.M != null) expect(fresh.sizes.M).toBe(3);
+    const updated = await Product.findById(p._id).lean();
+    expect(updated.sizes.M).toBe(3);
 
-    // invoice existence (best-effort, depends on your API)
+    // response şekli projeden projeye değişebilir; invoice varsa kontrol edelim
     expect(res.body).toBeTruthy();
   });
 
   test("29) PUT /api/orders/:id/status -> 400 invalid status", async () => {
-    const { token, user } = await seedUser({ role: "manager" });
-    const p = await seedProduct();
+    const manager = await createUser({ role: "manager", email: "ord29mgr@test.com" });
+    const u = await createUser({ role: "customer", email: "ord29@test.com" });
 
     const o = await Order.create({
-      user: user._id,
-      items: [{ productId: p._id, name: p.name, price: p.price, size: "M", quantity: 1, imageUrl: p.imageUrl }],
+      user: u._id,
+      items: [{ productId: "507f1f77bcf86cd799439012", name: "P", size: "M", quantity: 1, price: 10 }],
+      totalAmount: 10,
       shippingStatus: "Processing",
-      totalAmount: p.price,
     });
 
     const res = await request(app)
       .put(`/api/orders/${o._id}/status`)
-      .set("Authorization", `Bearer ${token}`)
-      .send({ status: "BAD_STATUS" });
+      .set(authHeaderFor(manager))
+      .send({ status: "NOT_A_REAL_STATUS" });
 
-    expect([400, 422]).toContain(res.status);
+    expect(res.status).toBe(400);
   });
 });
