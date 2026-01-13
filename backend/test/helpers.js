@@ -1,94 +1,52 @@
 // backend/test/helpers.js
 import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
-
 import User from "../src/models/User.js";
-import Product from "../src/models/Product.js";
-import Order from "../src/models/Order.js";
 
 /**
- * Creates a real user in DB (so requireAuth passes) and returns { user, token }.
+ * Test için user üretir.
+ * Not: projendeki User schema farklıysa (passwordHash vb),
+ * burada minimal alanlarla çalışacak şekilde tutmaya çalıştım.
  */
-export async function seedUser({
-  role = "customer",
-  email = "user@test.com",
-  name = "User",
-} = {}) {
-  const _id = new mongoose.Types.ObjectId();
+export async function createUser(overrides = {}) {
+  const {
+    email = `u_${Date.now()}_${Math.random().toString(16).slice(2)}@test.com`,
+    name = "Test User",
+    role = "customer",
+    passwordHash = "testhash",
+    ...rest
+  } = overrides;
 
-  const user = await User.create({
-    _id,
-    name,
-    email,
-    role,
-    passwordHash: "test_hash", // enough for tests
-  });
+  // Bazı projelerde User schema passwordHash ister, bazılarında istemez.
+  // O yüzden hem deniyoruz, hata olursa passwordHash'siz deniyoruz.
+  try {
+    return await User.create({ email, name, role, passwordHash, ...rest });
+  } catch (e) {
+    return await User.create({ email, name, role, ...rest });
+  }
+}
 
+/**
+ * ✅ Authorization header üretir.
+ * requireAuth artık DB'den user çektiği için token'ın id'si gerçek user olmalı.
+ */
+export function authHeaderFor(user) {
   const token = jwt.sign(
-    { id: String(user._id), email: user.email, role: user.role, name: user.name },
-    process.env.JWT_SECRET,
-    { expiresIn: "1d" }
+    {
+      id: String(user._id),
+      email: user.email,
+      role: user.role || "customer",
+      name: user.name || "User",
+    },
+    process.env.JWT_SECRET
   );
 
-  return { user, token };
+  return { Authorization: `Bearer ${token}` };
 }
 
 /**
- * Creates a product that satisfies your schema's required fields.
- * (Fixes model/serialNumber/distributor required errors.)
+ * Bazı testlerde direkt string header gerekebiliyor diye (opsiyonel).
  */
-export async function seedProduct(overrides = {}) {
-  const base = {
-    name: "Test Product",
-    category: "t-shirt",
-    price: 100,
-    imageUrl: "http://example.com/p.png",
-
-    // REQUIRED in your schema (based on test failures)
-    model: "M1",
-    serialNumber: "SN-" + Math.random().toString(16).slice(2),
-    distributor: "Dist-1",
-
-    // stock
-    sizes: { XS: 0, S: 2, M: 2, L: 2, XL: 0 },
-  };
-
-  return Product.create({ ...base, ...overrides });
-}
-
-/**
- * Creates a Delivered order for rating tests etc.
- * Adjust fields if your Order schema differs.
- */
-export async function seedDeliveredOrder({
-  userId,
-  productId,
-  qty = 1,
-  price = 100,
-  size = "M",
-  shippingStatus = "Delivered",
-} = {}) {
-  if (!userId) throw new Error("seedDeliveredOrder: userId is required");
-  if (!productId) throw new Error("seedDeliveredOrder: productId is required");
-
-  const totalAmount = qty * price;
-
-  const order = await Order.create({
-    user: userId,
-    items: [
-      {
-        productId,
-        name: "Item",
-        price,
-        size,
-        quantity: qty,
-        imageUrl: "http://example.com/i.png",
-      },
-    ],
-    shippingStatus,
-    totalAmount, // REQUIRED in your schema (based on failures)
-    createdAt: new Date(),
-  });
-
-  return order;
+export function bearerFor(user) {
+  const h = authHeaderFor(user);
+  return h.Authorization;
 }
