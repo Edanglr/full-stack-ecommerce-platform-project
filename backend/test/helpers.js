@@ -2,11 +2,6 @@
 import jwt from "jsonwebtoken";
 import User from "../src/models/User.js";
 
-/**
- * Test için user üretir.
- * Not: projendeki User schema farklıysa (passwordHash vb),
- * burada minimal alanlarla çalışacak şekilde tutmaya çalıştım.
- */
 export async function createUser(overrides = {}) {
   const {
     email = `u_${Date.now()}_${Math.random().toString(16).slice(2)}@test.com`,
@@ -16,19 +11,18 @@ export async function createUser(overrides = {}) {
     ...rest
   } = overrides;
 
-  // Bazı projelerde User schema passwordHash ister, bazılarında istemez.
-  // O yüzden hem deniyoruz, hata olursa passwordHash'siz deniyoruz.
   try {
     return await User.create({ email, name, role, passwordHash, ...rest });
-  } catch (e) {
+  } catch {
     return await User.create({ email, name, role, ...rest });
   }
 }
 
-/**
- * ✅ Authorization header üretir.
- * requireAuth artık DB'den user çektiği için token'ın id'si gerçek user olmalı.
- */
+// ✅ auth middleware testleri seedUser istiyor
+export async function seedUser(overrides = {}) {
+  return createUser(overrides);
+}
+
 export function authHeaderFor(user) {
   const token = jwt.sign(
     {
@@ -43,10 +37,6 @@ export function authHeaderFor(user) {
   return { Authorization: `Bearer ${token}` };
 }
 
-/**
- * Bazı testlerde direkt string header gerekebiliyor diye (opsiyonel).
- */
 export function bearerFor(user) {
-  const h = authHeaderFor(user);
-  return h.Authorization;
+  return authHeaderFor(user).Authorization;
 }
