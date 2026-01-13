@@ -34,22 +34,26 @@ jest.unstable_mockModule("../src/models/Product.js", () => ({
 
 // ✅ 2) Import AFTER mocks
 const { default: favoriteRoutes } = await import("../src/routes/favoriteRoutes.js");
-const { default: Favorite } = await import("../src/models/Favorite.js");
 const { requireAuth } = await import("../src/middleware/auth.js");
 
 function makeApp({ attachUser } = {}) {
   const app = express();
   app.use(express.json());
 
-  // test için requireAuth davranışını override edebilelim:
-  app.use((req, res, next) => {
+  // ✅ attachUser'ı requireAuth'tan ÖNCE çalıştır ki:
+  // - bu testte req.user undefined bırakılınca requireAuth tekrar set etmesin
+  app.use((req, _res, next) => {
     if (typeof attachUser === "function") {
       attachUser(req);
     }
     next();
   });
 
+  // ✅ requireAuth mock'u (default user set ediyor ama attachUser varsa onun dediği geçerli olur)
+  app.use((req, res, next) => requireAuth(req, res, next));
+
   app.use("/api/favorites", favoriteRoutes);
+
   // basit error handler
   app.use((err, _req, res, _next) => {
     res.status(500).json({ message: err.message || "Server error" });
@@ -64,16 +68,14 @@ beforeEach(() => {
 
 describe("EXTRA: favoriteRoutes + productRoutes", () => {
   test("GET /api/favorites/my -> if req.user missing -> 401", async () => {
-    // ✅ requireAuth normalde user set ediyordu; bu testte user'ı özellikle sil
     const app = makeApp({
       attachUser: (req) => {
-        // requireAuth çalışınca bile, route içinde kontrol var
-        // bu yüzden req.user'ı undefined bırakıyoruz
-        req.user = undefined;
+        // ✅ requireAuth user set etmesin diye "null" veriyoruz
+        // (requireAuth: req.user = req.user || {id:"u1"} -> null ise override etmez)
+        req.user = null;
       },
     });
 
-    // route içinde requireAuth var ama biz üstte req.user'ı boş bıraktık
     const res = await request(app).get("/api/favorites/my");
 
     expect(res.status).toBe(401);
