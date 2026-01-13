@@ -6,7 +6,11 @@ import { jest } from "@jest/globals";
 // ✅ 1) ESM-friendly mocks (NO require)
 jest.unstable_mockModule("../src/middleware/auth.js", () => ({
   requireAuth: (req, _res, next) => {
-    // default: user var gibi davran (test içinde override edebiliriz)
+    // ✅ Eğer test özellikle "user yok" senaryosu istiyorsa,
+    // req.user'ı null yapacağız ve requireAuth onu OVERRIDE ETMEYECEK.
+    if (req.user === null) return next();
+
+    // default: user var gibi davran
     req.user = req.user || { id: "u1" };
     next();
   },
@@ -27,30 +31,22 @@ jest.unstable_mockModule("../src/models/Favorite.js", () => ({
   },
 }));
 
-// Product model bu testte zorunlu değil ama import ediliyorsa sorun olmasın
 jest.unstable_mockModule("../src/models/Product.js", () => ({
   default: {},
 }));
 
 // ✅ 2) Import AFTER mocks
 const { default: favoriteRoutes } = await import("../src/routes/favoriteRoutes.js");
-const { requireAuth } = await import("../src/middleware/auth.js");
 
 function makeApp({ attachUser } = {}) {
   const app = express();
   app.use(express.json());
 
-  // ✅ attachUser'ı requireAuth'tan ÖNCE çalıştır ki:
-  // - bu testte req.user undefined bırakılınca requireAuth tekrar set etmesin
+  // test için req.user override
   app.use((req, _res, next) => {
-    if (typeof attachUser === "function") {
-      attachUser(req);
-    }
+    if (typeof attachUser === "function") attachUser(req);
     next();
   });
-
-  // ✅ requireAuth mock'u (default user set ediyor ama attachUser varsa onun dediği geçerli olur)
-  app.use((req, res, next) => requireAuth(req, res, next));
 
   app.use("/api/favorites", favoriteRoutes);
 
@@ -70,8 +66,7 @@ describe("EXTRA: favoriteRoutes + productRoutes", () => {
   test("GET /api/favorites/my -> if req.user missing -> 401", async () => {
     const app = makeApp({
       attachUser: (req) => {
-        // ✅ requireAuth user set etmesin diye "null" veriyoruz
-        // (requireAuth: req.user = req.user || {id:"u1"} -> null ise override etmez)
+        // ✅ requireAuth mock'u null görünce user set etmeyecek
         req.user = null;
       },
     });
@@ -85,7 +80,6 @@ describe("EXTRA: favoriteRoutes + productRoutes", () => {
   test("GET /api/favorites/my -> returns favorites array", async () => {
     const app = makeApp();
 
-    // ✅ find().populate().lean() chain mock
     mockFind.mockReturnValue({
       populate: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue([{ _id: "f1", product: { _id: "p1" } }]),
@@ -127,9 +121,7 @@ describe("EXTRA: favoriteRoutes + productRoutes", () => {
     mockFindOne.mockResolvedValue({ _id: "fav1" });
     mockFindByIdAndDelete.mockResolvedValue({});
 
-    const res = await request(app)
-      .post("/api/favorites/toggle")
-      .send({ productId: "p1" });
+    const res = await request(app).post("/api/favorites/toggle").send({ productId: "p1" });
 
     expect(res.status).toBe(200);
     expect(res.body.favorite).toBe(false);
@@ -142,9 +134,7 @@ describe("EXTRA: favoriteRoutes + productRoutes", () => {
     mockFindOne.mockResolvedValue(null);
     mockCreate.mockResolvedValue({ _id: "fav2" });
 
-    const res = await request(app)
-      .post("/api/favorites/toggle")
-      .send({ productId: "p1" });
+    const res = await request(app).post("/api/favorites/toggle").send({ productId: "p1" });
 
     expect(res.status).toBe(201);
     expect(res.body.favorite).toBe(true);
