@@ -92,15 +92,23 @@ describe("AdminReturnsPage", () => {
     ]);
 
     render(<AdminReturnsPage />);
+
+    // ✅ Stabilize: önce veri gerçekten render olsun
     expect(await screen.findByText(/Hoodie/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[0]);
+    const approveButtons = await screen.findAllByRole("button", { name: "Approve" });
+    fireEvent.click(approveButtons[0]);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/sales/returns/r1/approve"),
         expect.objectContaining({ method: "PATCH" })
       );
+    });
+
+    // ✅ İstersen ekstra doğrulama: 3 fetch çağrısı oldu mu? (GET + PATCH + GET)
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(3);
     });
   });
 });
