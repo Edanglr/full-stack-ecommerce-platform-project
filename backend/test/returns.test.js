@@ -23,9 +23,18 @@ const makeProduct = async (over = {}) =>
 
 async function postReturnRequest(user, payload) {
   // bazı projelerde /api/returns/request, bazılarında /api/returns
-  let res = await request(app).post("/api/returns/request").set(authHeaderFor(user)).send(payload);
+  let res = await request(app)
+    .post("/api/returns/request")
+    .set(authHeaderFor(user))
+    .send(payload);
+
   if (res.status !== 404) return res;
-  res = await request(app).post("/api/returns").set(authHeaderFor(user)).send(payload);
+
+  res = await request(app)
+    .post("/api/returns")
+    .set(authHeaderFor(user))
+    .send(payload);
+
   return res;
 }
 
