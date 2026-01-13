@@ -85,3 +85,19 @@ describe("AdminReturnsPage", () => {
         user: { name: "Nisa", email: "nisa@test.com" },
         order: { _id: "o1" },
         product: { _id: "p1", name: "Hoodie" },
+      },
+    ]);
+
+    render(<AdminReturnsPage />);
+    expect(await screen.findByText(/Hoodie/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByText("Approve")[0]);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/sales/returns/r1/approve"),
+        expect.objectContaining({ method: "PATCH" })
+      );
+    });
+  });
+});
