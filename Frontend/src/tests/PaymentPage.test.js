@@ -11,9 +11,7 @@ jest.mock("react-router-dom", () => ({
 
 jest.mock("../context/CartContext", () => ({
   useCart: () => ({
-    cart: [
-      { productId: "p1", name: "Hoodie", price: 100, size: "M", quantity: 1, image: "x" },
-    ],
+    cart: [{ productId: "p1", name: "Hoodie", price: 100, size: "M", quantity: 1, image: "x" }],
     setCart: jest.fn(),
   }),
 }));
@@ -31,7 +29,6 @@ afterEach(() => {
 
 describe("PaymentPage", () => {
   test("fetches saved cards and shows selector when exists", async () => {
-    // saved cards fetch
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: async () => [{ _id: "c1", last4: "4242", expiry: "12/30" }],
@@ -39,34 +36,38 @@ describe("PaymentPage", () => {
 
     render(<PaymentPage />);
 
-    expect(await screen.findByText(/Payment/i)).toBeInTheDocument();
+    // ✅ "Payment" hem h3 hem butonda geçiyor olabilir => heading’i hedefle
+    expect(await screen.findByRole("heading", { name: /Payment/i })).toBeInTheDocument();
     expect(await screen.findByText(/Use Saved Card/i)).toBeInTheDocument();
     expect(screen.getByText(/Add New Card/i)).toBeInTheDocument();
     expect(screen.getByText(/4242/i)).toBeInTheDocument();
   });
 
   test("submits order on Complete Payment", async () => {
-    // saved cards fetch -> none
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [],
-    });
-
-    // order POST
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ orderId: "o1", invoice: { invoiceNumber: "INV-1" } }),
-    });
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [], // saved cards none
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ orderId: "o1", invoice: { invoiceNumber: "INV-1" } }), // order POST
+      });
 
     render(<PaymentPage />);
 
-    // Switch to new card (no saved cards => it will show form directly)
-    fireEvent.change(screen.getByLabelText(/Cardholder Name/i), { target: { value: "Nisa" } });
-    fireEvent.change(screen.getByLabelText(/Card Number/i), { target: { value: "4242424242424242" } });
-    fireEvent.change(screen.getByLabelText(/Expiry/i), { target: { value: "1230" } });
-    fireEvent.change(screen.getByLabelText(/CVV/i), { target: { value: "123" } });
+    // ✅ Label-for bağlantısı yok => name attribute ile doldur
+    const nameInput = document.querySelector('input[name="cardName"]');
+    const numberInput = document.querySelector('input[name="cardNumber"]');
+    const expiryInput = document.querySelector('input[name="expiry"]');
+    const cvvInput = document.querySelector('input[name="cvv"]');
 
-    fireEvent.click(screen.getByText(/Complete Payment/i));
+    fireEvent.change(nameInput, { target: { value: "Nisa" } });
+    fireEvent.change(numberInput, { target: { value: "4242424242424242" } });
+    fireEvent.change(expiryInput, { target: { value: "1230" } });
+    fireEvent.change(cvvInput, { target: { value: "123" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Complete Payment/i }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
