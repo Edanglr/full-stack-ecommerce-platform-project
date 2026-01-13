@@ -240,35 +240,48 @@ router.post(
    GENEL CHAT ROTALARI
    ============================================================ */
 
-router.get("/:chatId", async (req, res) => {
-  try {
-    const { chatId } = req.params;
-    console.log("🔍 Fetching messages for chatId:", chatId);
+router.get(
+  "/:chatId",
+  requireAuth,
+  requireRole("supportAgent"),
+  async (req, res) => {
+    try {
+      const { chatId } = req.params;
+      console.log("🔍 Fetching messages for chatId:", chatId);
 
-    const chat = await Chat.findOne({ chatId }).lean();
+      const chat = await Chat.findOne({ chatId }).lean();
 
-    if (!chat) {
-      console.log("⚠️ Chat not found, returning empty:", chatId);
-      return res.json({ chatId, messages: [], status: 'active' });
-    }
+      if (!chat) {
+        console.log("⚠️ Chat not found, returning empty:", chatId);
+        return res.json({ chatId, messages: [], status: 'active' });
+      }
 
-    console.log(`✅ Chat found with ${chat.messages?.length || 0} messages, status: ${chat.status}`);
-
+      console.log(`✅ Chat found with ${chat.messages?.length || 0} messages, status: ${chat.status}`);
+      
+      if (
+        chat.claimedBy &&
+        chat.claimedBy.toString() !== req.user._id.toString() &&
+        req.user.role !== "manager"
+      ) {
+        return res.status(403).json({
+          message: "This chat is claimed by another support agent"
+        });
+      }
     // Tüm chat objesini döndür (messages dahil)
-    res.json({
-      chatId: chat.chatId,
-      customerId: chat.customerId,
-      status: chat.status || 'active',
-      messages: chat.messages || [],
-      lastMessageAt: chat.lastMessageAt,
-      createdAt: chat.createdAt,
-      updatedAt: chat.updatedAt
-    });
+      res.json({
+        chatId: chat.chatId,
+        customerId: chat.customerId,
+        status: chat.status || 'active',
+        messages: chat.messages || [],
+        lastMessageAt: chat.lastMessageAt,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt
+      });
 
-  } catch (err) {
-    console.error("❌ Fetch messages error:", err);
-    res.status(500).json({ message: "Failed to fetch messages", error: err.message });
-  }
+    } catch (err) {
+      console.error("❌ Fetch messages error:", err);
+      res.status(500).json({ message: "Failed to fetch messages", error: err.message });
+    }
 });
 
 
