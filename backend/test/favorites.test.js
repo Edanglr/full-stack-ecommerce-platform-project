@@ -1,89 +1,72 @@
-// backend/test/favorites.test.js
-import request from "supertest";
-import { createTestApp } from "./testApp.js";
-import { createUser, authHeaderFor } from "./helpers.js";
-import Product from "../src/models/Product.js";
-import Favorite from "../src/models/Favorite.js";
+import express from "express";
+import Favorite from "../models/Favorite.js";
+import { requireAuth } from "../middleware/auth.js";
 
-const app = createTestApp();
+const router = express.Router();
 
-const baseProduct = (over = {}) => ({
-  name: "FavProd",
-  price: 10,
-  category: "jeans",
-  sizes: { XS: 1, S: 1, M: 1, L: 1, XL: 1 },
+function getUserId(req) {
+  // requireAuth farklı projelerde farklı alanlar koyabiliyor
+  // testlerde bazen req.user hiç gelmeyebiliyor (extra test)
+  return req?.user?.id || req?.user?._id || req?.user?.userId || null;
+}
 
-  // ✅ required by your schema
-  model: "M1",
-  serialNumber: "SN-" + Math.random().toString(16).slice(2),
-  distributor: "D1",
-  warrantyStatus: "12 months",
+/**
+ * GET /api/favorites/my
+ * Kullanıcının favorilerini döndürür (product populate'lu)
+ */
+router.get("/my", requireAuth, async (req, res) => {
+  try {
+    const userId = getUserId(req);
 
-  ...over,
+    // ✅ FIX: req.user yoksa DB'ye girmeden 401
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated." });
+    }
+
+    const favorites = await Favorite.find({ user: userId })
+      .populate("product")
+      .lean();
+
+    return res.status(200).json(favorites);
+  } catch (err) {
+    console.error("Error fetching user favorites:", err);
+    return res.status(500).json({ message: "Could not load favorites." });
+  }
 });
 
-describe("FAVORITES ROUTES", () => {
-  test("1) GET /api/favorites/my -> 401 no token", async () => {
-    const res = await request(app).get("/api/favorites/my");
-    expect(res.status).toBe(401);
-  });
+/**
+ * POST /api/favorites/toggle
+ * Body: { productId }
+ * Favori varsa kaldırır yoksa ekler
+ */
+router.post("/toggle", requireAuth, async (req, res) => {
+  try {
+    const userId = getUserId(req);
 
-  test("2) GET /api/favorites/my -> 200 returns []", async () => {
-    const u = await createUser({ role: "customer", email: "fav1@test.com" });
-    const res = await request(app).get("/api/favorites/my").set(authHeaderFor(u));
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-  });
+    // ✅ FIX: req.user yoksa 401
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated." });
+    }
 
-  test("3) POST /api/favorites/toggle -> 400 missing productId", async () => {
-    const u = await createUser({ role: "customer", email: "fav2@test.com" });
-    const res = await request(app).post("/api/favorites/toggle").set(authHeaderFor(u)).send({});
-    expect(res.status).toBe(400);
-  });
+    const { productId } = req.body || {};
 
-  test("4) POST /api/favorites/toggle -> 201 adds favorite", async () => {
-    const u = await createUser({ role: "customer", email: "fav3@test.com" });
+    if (!productId) {
+      return res.status(400).json({ message: "Product ID is required." });
+    }
 
-    const p = await Product.create(baseProduct({ name: "FavProd" }));
+    const existing = await Favorite.findOne({ user: userId, product: productId });
 
-    const res = await request(app)
-      .post("/api/favorites/toggle")
-      .set(authHeaderFor(u))
-      .send({ productId: String(p._id) });
+    if (existing) {
+      await Favorite.deleteOne({ _id: existing._id });
+      return res.status(200).json({ favorite: false, message: "Favorite removed." });
+    }
 
-    expect([201, 200]).toContain(res.status);
-    const count = await Favorite.countDocuments({ user: u._id, product: p._id });
-    expect(count).toBe(1);
-  });
-
-  test("5) POST /api/favorites/toggle -> 200 removes favorite if exists", async () => {
-    const u = await createUser({ role: "customer", email: "fav4@test.com" });
-
-    const p = await Product.create(baseProduct({ name: "FavProd2", price: 15 }));
-
-    await Favorite.create({ user: u._id, product: p._id });
-
-    const res = await request(app)
-      .post("/api/favorites/toggle")
-      .set(authHeaderFor(u))
-      .send({ productId: String(p._id) });
-
-    expect(res.status).toBe(200);
-    const count = await Favorite.countDocuments({ user: u._id, product: p._id });
-    expect(count).toBe(0);
-  });
-
-  test("6) GET /api/favorites/my -> returns populated product", async () => {
-    const u = await createUser({ role: "customer", email: "fav5@test.com" });
-
-    const p = await Product.create(baseProduct({ name: "FavProd3", price: 20, category: "t-shirt" }));
-
-    await Favorite.create({ user: u._id, product: p._id });
-
-    const res = await request(app).get("/api/favorites/my").set(authHeaderFor(u));
-
-    expect(res.status).toBe(200);
-    expect(res.body[0].product).toBeTruthy();
-    expect(res.body[0].product.name).toBe("FavProd3");
-  });
+    await Favorite.create({ user: userId, product: productId });
+    return res.status(201).json({ favorite: true, message: "Favorite added." });
+  } catch (err) {
+    console.error("Error toggling favorite:", err);
+    return res.status(500).json({ message: "Could not toggle favorite." });
+  }
 });
+
+export default router;
