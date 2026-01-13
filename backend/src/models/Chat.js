@@ -1,9 +1,5 @@
 import mongoose from "mongoose";
 
-/**
- * messageSchema: 
- * Sohbet içerisindeki her bir mesajın yapısını belirler.
- */
 const messageSchema = new mongoose.Schema(
   {
     senderId: { 
@@ -33,10 +29,7 @@ const messageSchema = new mongoose.Schema(
   { _id: false }
 );
 
-/**
- * chatSchema: 
- * Bir müşteri ile destek ekibi arasındaki tüm oturumu temsil eder.
- */
+
 const chatSchema = new mongoose.Schema(
   {
     chatId: {
@@ -56,6 +49,13 @@ const chatSchema = new mongoose.Schema(
       enum: ["active", "closed"],
       default: "active",
     },
+
+    claimedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     messages: {
       type: [messageSchema],
       default: [],

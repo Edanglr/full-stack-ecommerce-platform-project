@@ -88,6 +88,8 @@ router.get("/admin", requireAuth, requireRole("supportAgent"), async (req, res) 
       const chatData = {
         chatId: c.chatId,
         customerId: customerId,
+        claimedBy: c.claimedBy || null,
+        isClaimed: !!c.claimedBy,
         customerName: isGuest
           ? "Guest User"
           : (user?.name || "Unknown User"),
@@ -186,6 +188,54 @@ router.get(
   }
 );
 
+// 🆕 Unclaimed chats (Support Agent)
+router.get(
+  "/admin/unclaimed",
+  requireAuth,
+  requireRole("supportAgent"),
+  async (req, res) => {
+    try {
+      const chats = await Chat.find({ claimedBy: null })
+        .sort({ lastMessageAt: -1 })
+        .lean();
+
+      res.json(chats);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch unclaimed chats" });
+    }
+  }
+);
+
+// 🆕 Claim a conversation
+router.post(
+  "/admin/claim/:chatId",
+  requireAuth,
+  requireRole("supportAgent"),
+  async (req, res) => {
+    try {
+      const { chatId } = req.params;
+      const agentId = req.user._id;
+
+      const chat = await Chat.findOne({ chatId });
+
+      if (!chat) {
+        return res.status(404).json({ message: "Chat not found" });
+      }
+
+      if (chat.claimedBy) {
+        return res.status(400).json({ message: "Chat already claimed" });
+      }
+
+      chat.claimedBy = agentId;
+      await chat.save();
+
+      res.json({ message: "Chat claimed successfully" });
+    } catch (err) {
+      res.status(500).json({ message: "Error claiming chat" });
+    }
+  }
+);
+
 /* ============================================================
    GENEL CHAT ROTALARI
    ============================================================ */
@@ -272,6 +322,9 @@ router.delete("/:chatId", requireAuth, requireRole("supportAgent", "manager"), a
     res.status(500).json({ message: "Error deleting chat." });
   }
 });
+
+
+
 
 
 export default router;

@@ -98,7 +98,9 @@ function AdminLiveChatPage({ user, setHasNewSupportMessage }) {
           lastText: c.lastText || "No messages",
           status: c.status || 'active',
           updatedAt: c.updatedAt || c.lastMessageAt,
-          messageCount: c.messageCount || 0
+          messageCount: c.messageCount || 0,
+          isClaimed: !!c.claimedBy,  
+          claimedBy: c.claimedBy || null
         }));
 
         console.log(`✅ Loaded ${formattedChats.length} chats`);
@@ -122,6 +124,41 @@ function AdminLiveChatPage({ user, setHasNewSupportMessage }) {
     setSelectedChat(null);
     setCustomerDetails(null);
   }, []);
+
+  const claimChat = async (chatId) => {
+  const token = localStorage.getItem("token");
+
+  try {
+    const res = await fetch(
+      `http://localhost:5050/api/chats/admin/claim/${chatId}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.message || "Chat already claimed");
+      return;
+    }
+
+    // UI güncelle
+    setActiveChats((prev) =>
+      prev.map((c) =>
+        c.chatId === chatId
+          ? { ...c, isClaimed: true, claimedBy: user._id }
+          : c
+      )
+    );
+  } catch (err) {
+    console.error("❌ Claim error:", err);
+    alert("Error claiming chat");
+  }
+};
+
   useEffect(() => {
     if (!selectedChat?.id) return;
 
@@ -312,6 +349,39 @@ function AdminLiveChatPage({ user, setHasNewSupportMessage }) {
                     </button>
                   )}
                 </div>
+                {/* CLAIM BUTTON / STATUS */}
+                {!c.isClaimed ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      claimChat(c.chatId);
+                    }}
+                    style={{
+                      marginTop: 6,
+                      padding: "4px 10px",
+                      fontSize: 11,
+                      background: "#007bff",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Claim
+                  </button>
+                ) : (
+                  <span
+                    style={{
+                      marginTop: 6,
+                      fontSize: 11,
+                      color: "#28a745",
+                      fontWeight: "bold"
+                    }}
+                  >
+                    ✔ Claimed
+                  </span>
+                )}
+
               </div>
 
             );
