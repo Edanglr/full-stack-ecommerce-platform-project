@@ -1,3 +1,4 @@
+// backend/src/routes/favoriteRoutes.js
 import express from "express";
 import Favorite from "../models/Favorite.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -57,7 +58,8 @@ router.post("/toggle", requireAuth, async (req, res) => {
     const existing = await Favorite.findOne({ user: userId, product: productId });
 
     if (existing) {
-      await Favorite.deleteOne({ _id: existing._id });
+      // ✅ extra test: findByIdAndDelete mock'u var
+      await Favorite.findByIdAndDelete(existing._id);
       return res.status(200).json({ favorite: false, message: "Favorite removed." });
     }
 
