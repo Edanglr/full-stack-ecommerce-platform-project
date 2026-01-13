@@ -1,0 +1,40 @@
+{
+  "to": "eda.guler@sabanciuniv.edu",
+  "subject": "Good news! 20% discount on your wishlist items",
+  "discountRate": 0.2,
+  "used": "smtp",
+  "products": [
+    {
+      "id": "69385acf1eeb73427533169c",
+      "name": "Fringe Loose Fit Jeans",
+      "price": 399.99
+    }
+  ],
+  "nodemailerInfo": {
+    "accepted": [
+      "eda.guler@sabanciuniv.edu"
+    ],
+    "rejected": [],
+    "ehlo": [
+      "SIZE 35882577",
+      "8BITMIME",
+      "AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH",
+      "ENHANCEDSTATUSCODES",
+      "PIPELINING",
+      "CHUNKING",
+      "SMTPUTF8"
+    ],
+    "envelopeTime": 478,
+    "messageTime": 870,
+    "messageSize": 597,
+    "response": "250 2.0.0 OK  1768324378 5b1f17b1804b1-47d7f695956sm424024735e9.6 - gsmtp",
+    "envelope": {
+      "from": "kaanmerdol@gmail.com",
+      "to": [
+        "eda.guler@sabanciuniv.edu"
+      ]
+    },
+    "messageId": "<501ee335-c98c-501b-65d1-cb8c82586607@gmail.com>"
+  },
+  "at": "2026-01-13T17:12:58.343Z"
+}

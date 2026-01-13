@@ -1,0 +1,35 @@
+{
+  "to": "eda.guler@sabanciuniv.edu",
+  "subject": "Your Invoice",
+  "orderId": "696658722343dcf9dbaa538f",
+  "used": "smtp",
+  "nodemailerInfo": {
+    "accepted": [
+      "eda.guler@sabanciuniv.edu"
+    ],
+    "rejected": [],
+    "ehlo": [
+      "SIZE 35882577",
+      "8BITMIME",
+      "AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH",
+      "ENHANCEDSTATUSCODES",
+      "PIPELINING",
+      "CHUNKING",
+      "SMTPUTF8"
+    ],
+    "envelopeTime": 1222,
+    "messageTime": 1020,
+    "messageSize": 3346,
+    "response": "250 2.0.0 OK  1768314997 5b1f17b1804b1-47ee1189f5fsm1698735e9.2 - gsmtp",
+    "envelope": {
+      "from": "kaanmerdol@gmail.com",
+      "to": [
+        "eda.guler@sabanciuniv.edu"
+      ]
+    },
+    "messageId": "<90f5a7ce-3973-bfc0-b576-c3bc27e46234@gmail.com>"
+  },
+  "pdfPath": "/Users/edaguler/Desktop/cs-308/backend/invoices/invoice-696658722343dcf9dbaa538f.pdf",
+  "hasBuffer": false,
+  "at": "2026-01-13T14:36:37.697Z"
+}

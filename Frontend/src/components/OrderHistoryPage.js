@@ -138,7 +138,14 @@ function OrderHistoryPage() {
     }
   };
 
-  const handleCancelOrder = async (orderId) => {
+  const handleCancelOrder = async (order) => {
+
+    if (String(order.shippingStatus).toLowerCase() !== "delivered") {
+      alert("Please contact your support agent to cancel or return this order.");
+      return;
+    }
+    const orderId = order._id;
+
     const confirm = window.confirm(
       "Are you sure you want to cancel this order? This action cannot be undone."
     );
@@ -379,7 +386,7 @@ function OrderHistoryPage() {
 
                 {canCancel && (
                   <button
-                    onClick={() => handleCancelOrder(order._id)}
+                    onClick={() => handleCancelOrder(order)}
                     disabled={cancellingOrderId === order._id}
                     style={{
                       padding: "8px 16px",
