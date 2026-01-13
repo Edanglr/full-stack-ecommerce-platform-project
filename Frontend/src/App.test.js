@@ -1,8 +1,13 @@
-// src/App.test.js
+import React from "react";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import App from "./App";
 import { CartProvider } from "./context/CartContext";
+
+// App içindeki ağır / fetch yapan componentleri mockla
+jest.mock("./components/ProductGrid", () => () => <div>MOCK ProductGrid</div>);
+jest.mock("./components/HeroVideo", () => () => <div>MOCK HeroVideo</div>);
+jest.mock("./components/CustomerChat", () => () => <div>MOCK CustomerChat</div>);
 
 test("renders navbar brand", () => {
   render(
@@ -13,8 +18,8 @@ test("renders navbar brand", () => {
     </CartProvider>
   );
 
-  // projede brand neyse ona göre: "UMBRELLA" / "Umbrella" vs.
-  expect(screen.getByText(/UMBRELLA/i)).toBeInTheDocument();
+  // Brand artık La Strada
+  expect(screen.getByText(/La Strada/i)).toBeInTheDocument();
 });
 
 test("renders All Products heading", () => {
