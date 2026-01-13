@@ -2,25 +2,24 @@
 import request from "supertest";
 import Product from "../src/models/Product.js";
 import Order from "../src/models/Order.js";
-
 import { createUser, authHeaderFor } from "./helpers.js";
 
-// ✅ IMPORTANT: Mock email module BEFORE importing testApp
 import { jest } from "@jest/globals";
 
-jest.unstable_mockModule("../src/utils/email.js", () => {
-  return {
-    // Projede hangi isimler import ediliyorsa hepsini güvenli şekilde veriyoruz
-    createTransporter: () => ({ sendMail: async () => true }),
+// ✅ email utils hangi export'u isterse istesin crash olmasın
+jest.unstable_mockModule("../src/utils/email.js", () => ({
+  createTransporter: () => ({ sendMail: async () => true }),
 
-    sendInvoiceEmail: jest.fn(async () => true),
-    sendRefundApprovalEmail: jest.fn(async () => true),
-    sendRefundRequestEmail: jest.fn(async () => true),
-    sendReturnRequestEmail: jest.fn(async () => true),
-    sendReturnStatusEmail: jest.fn(async () => true),
-    sendRefundProcessedEmail: jest.fn(async () => true),
-  };
-});
+  sendInvoiceEmail: jest.fn(async () => true),
+  sendRefundApprovalEmail: jest.fn(async () => true),
+  sendRefundRequestEmail: jest.fn(async () => true),
+  sendReturnRequestEmail: jest.fn(async () => true),
+  sendReturnStatusEmail: jest.fn(async () => true),
+  sendRefundProcessedEmail: jest.fn(async () => true),
+
+  // ✅ yeni hata bu
+  sendDiscountEmail: jest.fn(async () => true),
+}));
 
 let app;
 beforeAll(async () => {
@@ -28,8 +27,8 @@ beforeAll(async () => {
   app = mod.createTestApp();
 });
 
-const makeProduct = async (over = {}) => {
-  return Product.create({
+const makeProduct = async (over = {}) =>
+  Product.create({
     name: "P",
     model: "m",
     serialNumber: "sn-" + Math.random().toString(16).slice(2),
@@ -40,7 +39,6 @@ const makeProduct = async (over = {}) => {
     sizes: { M: 5 },
     ...over,
   });
-};
 
 describe("ORDERS", () => {
   test("25) POST /api/orders -> 400 if no items", async () => {
@@ -96,8 +94,6 @@ describe("ORDERS", () => {
 
     const updated = await Product.findById(p._id).lean();
     expect(updated.sizes.M).toBe(3);
-
-    // response şekli projeden projeye değişebilir; invoice varsa kontrol edelim
     expect(res.body).toBeTruthy();
   });
 
