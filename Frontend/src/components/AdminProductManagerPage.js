@@ -217,7 +217,7 @@ function AdminProductManagerPage() {
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5050/api/products/${id}`, {
+      const res = await fetch(`http://localhost:5050/api/admin/products/${id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
