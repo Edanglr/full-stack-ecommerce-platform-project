@@ -46,7 +46,10 @@ describe("AdminReturnsPage", () => {
     render(<AdminReturnsPage />);
     expect(await screen.findByText(/Return Requests/i)).toBeInTheDocument();
     expect(await screen.findByText(/Hoodie/i)).toBeInTheDocument();
-    expect(screen.getByText(/Requested/i)).toBeInTheDocument();
+
+    // ✅ "Requested" hem select option hem badge => getAllByText kullan
+    const requested = screen.getAllByText(/Requested/i);
+    expect(requested.length).toBeGreaterThan(0);
   });
 
   test("shows error on fetch fail", async () => {
@@ -91,7 +94,7 @@ describe("AdminReturnsPage", () => {
     render(<AdminReturnsPage />);
     expect(await screen.findByText(/Hoodie/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByText("Approve")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[0]);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
