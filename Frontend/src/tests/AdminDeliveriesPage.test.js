@@ -62,9 +62,7 @@ describe("AdminDeliveriesPage", () => {
     render(<AdminDeliveriesPage />);
 
     expect(await screen.findByText("Delivery / Order Status Panel")).toBeInTheDocument();
-    // grouped -> Delivery ID cell shows D1
     expect(await screen.findByText("D1")).toBeInTheDocument();
-    // items detail includes both product ids
     expect(screen.getByText(/P1 \| qty: 2 \| total: 200\.00/i)).toBeInTheDocument();
     expect(screen.getByText(/P2 \| qty: 1 \| total: 300\.00/i)).toBeInTheDocument();
   });
@@ -112,9 +110,9 @@ describe("AdminDeliveriesPage", () => {
     expect(await screen.findByText("D1")).toBeInTheDocument();
     expect(await screen.findByText("D2")).toBeInTheDocument();
 
+    // select "All" -> "Delivered"
     fireEvent.change(screen.getByDisplayValue("All"), { target: { value: "Delivered" } });
 
-    // D1 should disappear, D2 should remain
     await waitFor(() => {
       expect(screen.queryByText("D1")).not.toBeInTheDocument();
       expect(screen.getByText("D2")).toBeInTheDocument();
@@ -162,7 +160,8 @@ describe("AdminDeliveriesPage", () => {
     render(<AdminDeliveriesPage />);
     expect(await screen.findByText("D1")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Delivered"));
+    // ✅ "Delivered" hem option hem button olabilir => butonu hedefle
+    fireEvent.click(screen.getByRole("button", { name: "Delivered" }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
