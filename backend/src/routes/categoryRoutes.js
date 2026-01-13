@@ -102,4 +102,24 @@ router.post("/", requireRole("productManager"), async (req, res) => {
   }
 });
 
+router.delete("/:name", requireRole("productManager"), async (req, res) => {
+  try {
+    const categoryName = req.params.name;
+    
+    // Assuming you have a Category model
+    const deletedCategory = await Category.findOneAndDelete({ 
+      name: new RegExp(`^${categoryName}$`, "i") 
+    });
+
+    if (!deletedCategory) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    res.json({ message: "Category deleted successfully" });
+  } catch (err) {
+    console.error("Delete category error:", err);
+    res.status(500).json({ message: "Error deleting category" });
+  }
+});
+
 export default router;

@@ -238,6 +238,33 @@ function AdminProductManagerPage() {
     }
   };
 
+  const handleDeleteCategory = async (categoryName) => {
+    // Sadece manuel eklenen (veritabanındaki) kategorileri silmek için onay alıyoruz
+    if (!window.confirm(`Are you sure you want to delete the category "${categoryName}"?`)) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:5050/api/categories/${categoryName}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to delete category.");
+      }
+
+      setSuccessMsg("Category deleted successfully.");
+      await fetchCategories(); // Listeyi güncelle
+      setTimeout(() => setSuccessMsg(""), 2500);
+    } catch (err) {
+      console.error("Delete category error:", err);
+      setError(err.message);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ padding: "40px", textAlign: "center", marginTop: 80 }}>
@@ -299,9 +326,6 @@ function AdminProductManagerPage() {
         }}
       >
         <h3 style={{ marginTop: 0 }}>Category Management</h3>
-        <p style={{ marginTop: 6, color: "#666" }}>
-          Existing categories (from DB + existing products):
-        </p>
 
         <div
           style={{
@@ -321,6 +345,9 @@ function AdminProductManagerPage() {
               <span
                 key={c}
                 style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
                   padding: "6px 10px",
                   borderRadius: 999,
                   border: "1px solid #ddd",
@@ -330,6 +357,21 @@ function AdminProductManagerPage() {
                 }}
               >
                 {c}
+                <button
+                  onClick={() => handleDeleteCategory(c)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "#ff4d4f",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                    padding: "0 2px"
+                  }}
+                  title="Delete Category"
+                >
+                  ×
+                </button>
               </span>
             ))
           )}
